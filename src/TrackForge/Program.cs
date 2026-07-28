@@ -30,6 +30,12 @@ internal static class Program
             return Core.UiStressTest.Run();
         }
 
+        if (args.Contains("--retag"))
+        {
+            AttachConsole(-1);
+            return Core.RetagTool.RunAsync(args).GetAwaiter().GetResult();
+        }
+
         if (args.Contains("--cardtest"))
         {
             AttachConsole(-1);

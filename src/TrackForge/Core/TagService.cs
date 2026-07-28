@@ -7,6 +7,21 @@ namespace TrackForge.Core;
 /// <summary>Reads and writes tags + embedded artwork via TagLib#.</summary>
 public static class TagService
 {
+    static TagService()
+    {
+        // Windows Explorer and Windows Media Player have poor ID3v2.4 support. Given a
+        // v2.4 file they quietly fall back to the ancient ID3v1 tag, where genre is a
+        // single byte index - which is why "Rock" showed up in Explorer as "17" and
+        // cover art rendered as a black square.
+        //
+        // v2.3 is what the Windows shell actually reads, and it costs nothing here.
+        TagLib.Id3v2.Tag.DefaultVersion = 3;
+        TagLib.Id3v2.Tag.ForceDefaultVersion = true;
+
+        // Write genres as plain text rather than "(17)" numeric references.
+        TagLib.Id3v2.Tag.UseNumericGenres = false;
+    }
+
     public static readonly HashSet<string> AudioExtensions = new(StringComparer.OrdinalIgnoreCase)
         { ".mp3", ".flac", ".m4a", ".opus", ".ogg", ".wav", ".aac", ".wma", ".aiff" };
 
@@ -137,6 +152,10 @@ public static class TagService
             };
             t.HasArt = true;
         }
+
+        // Drop ID3v1 entirely. It cannot hold most of what we write, and leaving it in
+        // place gives the Windows shell something stale to fall back to.
+        f.RemoveTags(TagTypes.Id3v1);
 
         f.Save();
     }

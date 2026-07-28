@@ -40,10 +40,24 @@ public static partial class NameFormatter
 
             var lower = w.ToLowerInvariant();
             bool middle = i > 0 && i < words.Length - 1;
-            if (middle && LowerWords.Contains(lower.Trim('.', ',', '(', ')')))
+            if (middle && LowerWords.Contains(lower.Trim('.', ',', '(', ')', '[', ']', '"', '\'')))
+            {
                 sb.Append(lower);
+            }
             else
-                sb.Append(char.ToUpperInvariant(lower[0])).Append(lower[1..]);
+            {
+                // Capitalise the first LETTER, not the first character: a word like
+                // "(deluxe" starts with a bracket, and upper-casing that changes
+                // nothing, which is how "(deluxe Edition)" slipped through.
+                int letter = 0;
+                while (letter < lower.Length && !char.IsLetter(lower[letter])) letter++;
+                if (letter == lower.Length)
+                    sb.Append(lower);
+                else
+                    sb.Append(lower[..letter])
+                      .Append(char.ToUpperInvariant(lower[letter]))
+                      .Append(lower[(letter + 1)..]);
+            }
         }
         return sb.ToString();
     }
