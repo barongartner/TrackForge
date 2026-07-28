@@ -68,7 +68,8 @@ public static class RetagTool
         {
             blankArt += TagService.RemoveBlankFolderArt(dir!);
         }
-        if (blankArt > 0) Console.WriteLine($"\n           removed {blankArt} blank folder image(s)");
+        blankArt += TagService.RemoveBlankMediaPlayerCache();
+        if (blankArt > 0) Console.WriteLine($"\n           cleared {blankArt} blank cover image(s)");
 
         Console.WriteLine($"\n           {repaired} rewritten, {unchanged} skipped, {failed} failed");
         Console.WriteLine(new string('-', 70));

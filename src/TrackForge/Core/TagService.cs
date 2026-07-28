@@ -267,6 +267,44 @@ public static class TagService
         return removed;
     }
 
+    /// <summary>
+    /// Windows Media Player keeps its own copy of album art, separate from the files.
+    /// If it cached a blank image while our tags were unreadable, it keeps drawing that
+    /// blank in its library list no matter how many times the tags are fixed - the Now
+    /// Playing panel reads the file directly, which is why art can look correct there
+    /// and black in the list at the same time.
+    ///
+    /// Only provably blank entries are removed. Everything else is left alone, and WMP
+    /// rebuilds whatever it needs from the embedded art.
+    /// </summary>
+    public static int RemoveBlankMediaPlayerCache()
+    {
+        var cache = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Microsoft", "Media Player", "Art Cache");
+
+        if (!Directory.Exists(cache)) return 0;
+
+        int removed = 0;
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(cache, "*.jpg", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    if (!IsEffectivelyBlank(file)) continue;
+                    File.SetAttributes(file, FileAttributes.Normal);
+                    File.Delete(file);
+                    removed++;
+                }
+                catch { /* WMP running and holding it: skip */ }
+            }
+        }
+        catch { }
+
+        return removed;
+    }
+
     /// <summary>True when an image is a solid near-black (or near-white) placeholder.</summary>
     private static bool IsEffectivelyBlank(string path)
     {

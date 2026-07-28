@@ -265,8 +265,12 @@ public sealed class ForgeService : IDisposable
                     blankArt += TagService.RemoveBlankFolderArt(folder!);
                 }
 
+                // WMP caches art separately and keeps showing a blank it took earlier,
+                // so clearing the files alone is not enough.
+                blankArt += TagService.RemoveBlankMediaPlayerCache();
+
                 var message = $"Repaired {repaired}";
-                if (blankArt > 0) message += $", removed {blankArt} blank folder image(s)";
+                if (blankArt > 0) message += $", cleared {blankArt} blank cover image(s)";
                 if (locked > 0)
                     message += $", {locked} in use by another app ({string.Join(", ", lockedNames)}" +
                                (locked > lockedNames.Count ? ", ..." : "") + ")";
