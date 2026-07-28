@@ -30,6 +30,12 @@ internal static class Program
             return Core.UiStressTest.Run();
         }
 
+        if (args.Contains("--grabtest"))
+        {
+            AttachConsole(-1);
+            return Core.GrabTest.RunAsync(args).GetAwaiter().GetResult();
+        }
+
         if (args.Contains("--install-tools"))
         {
             AttachConsole(-1);

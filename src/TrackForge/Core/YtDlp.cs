@@ -64,6 +64,13 @@ public sealed partial class YtDlp
     [GeneratedRegex(@"\[download\]\s+([\d.]+)%")]
     private static partial Regex ProgressLine();
 
+    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(120);
+
+    private static void KillQuietly(Process p)
+    {
+        try { if (!p.HasExited) p.Kill(entireProcessTree: true); } catch { }
+    }
+
     // -------------------------------------------------------------- checks
 
     public async Task<(string? ytDlp, string? ffmpeg)> CheckToolsAsync(CancellationToken ct = default)
@@ -80,9 +87,16 @@ public sealed partial class YtDlp
             var psi = NewPsi(exe, args);
             using var p = Process.Start(psi);
             if (p is null) return null;
-            var text = await p.StandardOutput.ReadToEndAsync(ct).ConfigureAwait(false);
+
+            // Drain both pipes, otherwise a chatty tool blocks on stderr and hangs
+            // startup. ffmpeg -version in particular writes a wall of build config.
+            var stdoutTask = p.StandardOutput.ReadToEndAsync(ct);
+            var stderrTask = p.StandardError.ReadToEndAsync(ct);
+            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
             await p.WaitForExitAsync(ct).ConfigureAwait(false);
+
             if (p.ExitCode != 0) return null;
+            var text = stdoutTask.Result.Length > 0 ? stdoutTask.Result : stderrTask.Result;
             return text.Split('\n').FirstOrDefault()?.Trim();
         }
         catch { return null; }
@@ -116,9 +130,26 @@ public sealed partial class YtDlp
         using var p = Process.Start(psi) ?? throw new InvalidOperationException(
             "Could not start yt-dlp. Install it with:  pip install -U yt-dlp");
 
-        var stdout = await p.StandardOutput.ReadToEndAsync(ct).ConfigureAwait(false);
-        var stderr = await p.StandardError.ReadToEndAsync(ct).ConfigureAwait(false);
+        // Both pipes must be drained concurrently. Reading stdout to the end first
+        // deadlocks the moment yt-dlp writes more than the pipe buffer to stderr:
+        // it blocks on the write, so stdout never closes, so we wait forever.
+        var stdoutTask = p.StandardOutput.ReadToEndAsync(ct);
+        var stderrTask = p.StandardError.ReadToEndAsync(ct);
+        var both = Task.WhenAll(stdoutTask, stderrTask);
+
+        // Belt and braces: a wedged child process must never freeze the app.
+        if (await Task.WhenAny(both, Task.Delay(ProbeTimeout, ct)).ConfigureAwait(false) != both)
+        {
+            KillQuietly(p);
+            throw new InvalidOperationException(
+                $"yt-dlp did not respond within {ProbeTimeout.TotalSeconds:0} seconds. " +
+                "Try Settings > Install / update tools.");
+        }
+
         await p.WaitForExitAsync(ct).ConfigureAwait(false);
+
+        var stdout = stdoutTask.Result;
+        var stderr = stderrTask.Result;
 
         if (p.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout))
             throw new InvalidOperationException(LastError(stderr) ?? "yt-dlp could not read that link.");
@@ -155,8 +186,12 @@ public sealed partial class YtDlp
             using var p = Process.Start(psi);
             if (p is null) return results;
 
-            var stdout = await p.StandardOutput.ReadToEndAsync(ct).ConfigureAwait(false);
+            var stdoutTask = p.StandardOutput.ReadToEndAsync(ct);
+            var stderrTask = p.StandardError.ReadToEndAsync(ct);
+            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
             await p.WaitForExitAsync(ct).ConfigureAwait(false);
+
+            var stdout = stdoutTask.Result;
             if (p.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout)) return results;
 
             using var doc = JsonDocument.Parse(stdout);

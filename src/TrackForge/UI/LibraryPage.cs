@@ -199,6 +199,41 @@ public sealed class LibraryPage : Panel
 
     public void FocusSearch() => _search.Inner.Focus();
 
+    /// <summary>
+    /// Test hook: churns the list the way real use does - filter, search, re-render,
+    /// change selection, and load artwork - so the leak detector sees the paths that
+    /// actually matter rather than just page visibility.
+    /// </summary>
+    internal void StressForTesting()
+    {
+        foreach (var filter in new[] { "art", "year", "incomplete", "all" })
+        {
+            _filter = filter;
+            ApplyFilter();
+        }
+
+        _search.Text = "a";
+        ApplyFilter();
+        _search.Text = "";
+        ApplyFilter();
+
+        if (_list.Items.Count > 0)
+        {
+            _list.Items[0].Selected = true;
+            if (_list.Items.Count > 1) _list.Items[^1].Selected = true;
+
+            // Artwork is the usual GDI offender: a Bitmap handed to a control and
+            // never disposed leaks until the process runs out of objects.
+            var track = _list.Items[0].Tag as Track;
+            if (track is not null)
+            {
+                var bytes = TagService.ReadArt(track.Path);
+                using var image = TagService.ImageFromBytes(bytes);
+            }
+            _list.SelectedItems.Clear();
+        }
+    }
+
     public async Task RescanAsync()
     {
         _rescan.Enabled = false;

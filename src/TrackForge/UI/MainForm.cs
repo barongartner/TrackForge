@@ -134,8 +134,10 @@ public sealed class MainForm : Form
         _pages.Add((nav, page));
     }
 
-    /// <summary>Test hook for the handle-leak stress run.</summary>
+    /// <summary>Test hooks for the handle-leak stress run.</summary>
     internal void ShowPageForTesting(int index) => Show(index);
+
+    internal void StressLibraryForTesting() => _library.StressForTesting();
 
     private void Show(int index)
     {
