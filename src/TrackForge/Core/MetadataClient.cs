@@ -302,6 +302,82 @@ public sealed partial class MetadataClient
         return unique;
     }
 
+    /// <summary>
+    /// Folds the candidate list into one result that has as many fields filled as
+    /// possible. No single source carries everything - iTunes has track numbers and
+    /// genre, Deezer has ISRC and year, MusicBrainz has ISRC but rarely a genre - so
+    /// applying only the top match leaves gaps the user then has to hunt for by hand.
+    ///
+    /// The best match is the base. Every still-empty field is filled from the next
+    /// candidate that has it, but only from candidates close enough in score to be
+    /// the same recording - otherwise a weak match for a different song donates its
+    /// album and quietly corrupts the tags.
+    /// </summary>
+    public static MatchCandidate? Merge(IReadOnlyList<MatchCandidate> candidates)
+    {
+        if (candidates.Count == 0) return null;
+
+        var best = candidates[0];
+        var merged = new MatchCandidate
+        {
+            Source = best.Source,
+            Score = best.Score,
+            Title = best.Title,
+            Artist = best.Artist,
+            Album = best.Album,
+            AlbumArtist = best.AlbumArtist,
+            Year = best.Year,
+            Genre = best.Genre,
+            TrackNumber = best.TrackNumber,
+            TrackCount = best.TrackCount,
+            DiscNumber = best.DiscNumber,
+            Isrc = best.Isrc,
+            Publisher = best.Publisher,
+            Bpm = best.Bpm,
+            DurationSeconds = best.DurationSeconds,
+            ArtUrl = best.ArtUrl,
+            ArtThumbUrl = best.ArtThumbUrl,
+            AlbumId = best.AlbumId,
+        };
+
+        // Only trust donors that are plainly the same recording.
+        double floor = Math.Max(45, best.Score - 25);
+        var contributors = new List<string>();
+
+        foreach (var c in candidates.Skip(1))
+        {
+            if (c.Score < floor) break;         // sorted desc, so nothing after this qualifies
+            bool used = false;
+
+            void Fill(Func<MatchCandidate, string> get, Action<string> set)
+            {
+                var incoming = get(c);
+                if (string.IsNullOrWhiteSpace(incoming)) return;
+                if (!string.IsNullOrWhiteSpace(get(merged))) return;
+                set(incoming);
+                used = true;
+            }
+
+            Fill(x => x.Album, v => merged.Album = v);
+            Fill(x => x.AlbumArtist, v => merged.AlbumArtist = v);
+            Fill(x => x.Year, v => merged.Year = v);
+            Fill(x => x.Genre, v => merged.Genre = v);
+            Fill(x => x.TrackNumber, v => merged.TrackNumber = v);
+            Fill(x => x.TrackCount, v => merged.TrackCount = v);
+            Fill(x => x.DiscNumber, v => merged.DiscNumber = v);
+            Fill(x => x.Isrc, v => merged.Isrc = v);
+            Fill(x => x.Publisher, v => merged.Publisher = v);
+            Fill(x => x.Bpm, v => merged.Bpm = v);
+            Fill(x => x.ArtUrl, v => merged.ArtUrl = v);
+            Fill(x => x.ArtThumbUrl, v => merged.ArtThumbUrl = v);
+
+            if (used && !contributors.Contains(c.Source)) contributors.Add(c.Source);
+        }
+
+        merged.MergedFrom = contributors;
+        return merged;
+    }
+
     private static string Norm(string? s) => NonAlnum().Replace((s ?? "").ToLowerInvariant(), "");
 
     private static string Take4(string? s) =>

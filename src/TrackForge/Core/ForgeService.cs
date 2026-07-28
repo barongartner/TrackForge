@@ -162,7 +162,9 @@ public sealed class ForgeService : IDisposable
                 var candidates = await Metadata
                     .LookupAsync(track.Artist, track.Title, track.DurationSeconds, ct: ct)
                     .ConfigureAwait(false);
-                var best = candidates.FirstOrDefault();
+                // Merge across sources so one pass fills everything available, rather
+                // than leaving gaps only the next source down could have covered.
+                var best = MetadataClient.Merge(candidates);
 
                 if (best is { Score: >= 45 })
                 {

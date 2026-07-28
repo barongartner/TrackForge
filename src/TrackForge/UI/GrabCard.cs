@@ -26,6 +26,7 @@ public sealed class GrabCard : CardPanel
 
     private readonly Dictionary<string, FlatTextBox> _fields = new(StringComparer.OrdinalIgnoreCase);
     private List<MatchCandidate> _candidates = new();
+    private MatchCandidate? _merged;
     private byte[]? _artBytes;
     private string? _artUrl;
     private bool _suppressMatchEvent;
@@ -255,10 +256,18 @@ public sealed class GrabCard : CardPanel
                 _matches.Items.Add("No matches found");
                 _matches.SelectedIndex = 0;
                 _suppressMatchEvent = false;
+                _merged = null;
                 SetStatus("Nothing found online. Type the tags in by hand.", Theme.Warn);
                 return;
             }
 
+            // The merged result is the default: one press fills every field it can.
+            // The individual sources stay in the list underneath for overriding.
+            _merged = MetadataClient.Merge(_candidates);
+
+            _matches.Items.Add(_merged is null
+                ? "Best match"
+                : $"Best of all sources ({_merged.SourceLabel})");
             foreach (var c in _candidates) _matches.Items.Add(c.Display);
             _matches.SelectedIndex = 0;
             _suppressMatchEvent = false;
@@ -273,25 +282,51 @@ public sealed class GrabCard : CardPanel
 
     private async void ApplySelectedMatch()
     {
-        if (_suppressMatchEvent) return;
-        if (_matches.SelectedIndex < 0 || _matches.SelectedIndex >= _candidates.Count) return;
+        if (_suppressMatchEvent || _matches.SelectedIndex < 0) return;
 
-        var chosen = _candidates[_matches.SelectedIndex];
+        // Index 0 is the merged result; the rest map onto _candidates.
+        MatchCandidate? chosen;
+        if (_matches.SelectedIndex == 0)
+        {
+            chosen = _merged;
+        }
+        else
+        {
+            int i = _matches.SelectedIndex - 1;
+            if (i >= _candidates.Count) return;
+            chosen = _candidates[i];
+        }
+        if (chosen is null) return;
+
         chosen.ApplyTo(Meta, overwrite: true, _forge.Config.ForceTitleCase);
+
+        // Picking a specific source shouldn't cost you the fields it happens to lack,
+        // so top up anything still blank from the merged result.
+        if (_merged is not null && !ReferenceEquals(chosen, _merged))
+            _merged.ApplyTo(Meta, overwrite: false, _forge.Config.ForceTitleCase);
+
         PushMetaToFields();
 
+        var filled = CountFilled();
         bool duplicate = _forge.AlreadyHave(Meta.Artist, Meta.Title);
         SetStatus(duplicate
-                ? $"{chosen.Source} match ({chosen.Score:0}) - already in your library"
-                : $"{chosen.Source} match ({chosen.Score:0})",
+                ? $"{chosen.SourceLabel} ({chosen.Score:0}) - {filled}/8 fields - already in your library"
+                : $"{chosen.SourceLabel} ({chosen.Score:0}) - {filled}/8 fields filled",
             duplicate ? Theme.Warn : Theme.Good);
 
-        if (_forge.Config.AutoArt && chosen.ArtUrl.Length > 0)
+        var artUrl = chosen.ArtUrl.Length > 0 ? chosen.ArtUrl : _merged?.ArtUrl ?? "";
+        if (_forge.Config.AutoArt && artUrl.Length > 0)
         {
-            var bytes = await _forge.Metadata.DownloadArtAsync(chosen.ArtUrl);
-            if (bytes is not null && !IsDisposed) SetArt(bytes, chosen.ArtUrl);
+            var bytes = await _forge.Metadata.DownloadArtAsync(artUrl);
+            if (bytes is not null && !IsDisposed) SetArt(bytes, artUrl);
         }
     }
+
+    private int CountFilled() => new[]
+    {
+        Meta.Title, Meta.Artist, Meta.Album, Meta.AlbumArtist,
+        Meta.Year, Meta.Genre, Meta.TrackNumber, Meta.DiscNumber,
+    }.Count(v => !string.IsNullOrWhiteSpace(v));
 
     private async Task PickArtAsync()
     {

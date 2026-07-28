@@ -22,6 +22,13 @@ public sealed class MatchCandidate
     public string? AlbumId { get; set; }
     public double Score { get; set; }
 
+    /// <summary>Extra sources that donated fields when this is a merged result.</summary>
+    public List<string> MergedFrom { get; set; } = new();
+
+    public string SourceLabel => MergedFrom.Count == 0
+        ? Source
+        : $"{Source} + {string.Join(" + ", MergedFrom)}";
+
     public string Display =>
         $"{Artist} - {Title}" +
         (string.IsNullOrWhiteSpace(Album) ? "" : $"  [{Album}") +

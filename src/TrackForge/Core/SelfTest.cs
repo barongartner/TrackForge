@@ -142,6 +142,24 @@ public static class SelfTest
                 Line($"           {c.Score,6:0.0}  {c.Source,-12} {Trim(c.Artist, 20)}  " +
                      $"{Trim(c.Album, 24)}  {c.Year}  {Trim(c.Genre, 14)}  art:{(c.ArtUrl.Length > 0 ? "yes" : "no")}");
 
+            // One lookup has to fill every field it can, not just what the top
+            // source happens to carry. Prove the merge closes the gaps.
+            static int Filled(MatchCandidate c) => new[]
+            {
+                c.Title, c.Artist, c.Album, c.AlbumArtist, c.Year,
+                c.Genre, c.TrackNumber, c.DiscNumber, c.Isrc,
+            }.Count(v => !string.IsNullOrWhiteSpace(v));
+
+            var merged = MetadataClient.Merge(candidates);
+            if (merged is not null)
+            {
+                int before = Filled(candidates[0]);
+                int after = Filled(merged);
+                Line($"           merge   top source alone {before}/9 fields -> merged {after}/9");
+                Line($"           from    {merged.SourceLabel}");
+                if (after < before) failures++;
+            }
+
             var top = candidates.FirstOrDefault(c => c.ArtUrl.Length > 0);
             if (top is not null)
             {

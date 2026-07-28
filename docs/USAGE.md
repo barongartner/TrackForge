@@ -25,12 +25,26 @@ sensible default.
 ### One track
 
 1. Paste the link into the box.
-2. **Fetch metadata**. A card appears with the artist and title guessed from the video.
-3. **Look up** on the card. The dropdown fills with matches from iTunes, Deezer and
-   MusicBrainz, best first, and the fields populate from the top one.
-4. If the top match is wrong, pick another from the dropdown — every field and the
-   cover art update together.
+2. **Fetch**. A card appears with the artist and title guessed from the video.
+3. **Look up** on the card. One press is all it takes — see below.
+4. If the result is wrong, pick a different source from the dropdown.
 5. **Grab**.
+
+### One press fills everything
+
+No single source has every field. Deezer usually has the year and the ISRC but not the
+track number; iTunes has the track number and genre; MusicBrainz has the ISRC but rarely
+a genre. Applying only the best match would leave gaps you'd then have to chase by hand.
+
+So **Look up** merges them. The best match is the base, and every field it left blank is
+filled from the next-best source that has it. The first dropdown entry is that merged
+result — `Best of all sources (Deezer + iTunes)` — and it's selected automatically. The
+individual sources sit underneath it if you want to override.
+
+The status line tells you how it went: `Deezer + iTunes (97) - 8/8 fields filled`.
+
+Only sources scoring close to the best one can contribute, so a weak match for a
+different song can't quietly donate its album name.
 
 ### A playlist
 
@@ -84,15 +98,25 @@ The counter under the search box reads `x shown | y total | z need work`.
 
 ### Bulk fixing
 
-1. Pick a filter chip.
-2. `Ctrl+A`.
-3. **Fill tags from online**.
-4. Choose the fields it may touch. By default it fills album, album artist, year,
+Two buttons:
+
+- **Fill every track** — works on everything currently shown. No selecting first. If a
+  filter is active it reads `Fill all 118 shown` so you know the scope.
+- **Fill selected** — only the rows you've highlighted.
+
+Either way:
+
+1. Pick a filter chip, e.g. **Incomplete**.
+2. **Fill every track**.
+3. Choose the fields it may touch. By default it fills album, album artist, year,
    genre, track number, disc number and ISRC, and leaves title and artist alone —
    those are usually already right, and a bad match would wreck them.
-5. **Overwrite fields that already have a value** is off by default. Leave it off
+4. **Overwrite fields that already have a value** is off by default. Leave it off
    unless you're deliberately re-tagging.
-6. **Run**. Watch the Jobs panel.
+5. **Run**. Watch the Jobs panel.
+
+Bulk fill merges across sources exactly like the Grab page does, so one pass fills
+everything available rather than leaving gaps.
 
 Anything that doesn't get a match scoring 45+ is left completely untouched.
 

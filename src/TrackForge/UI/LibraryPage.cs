@@ -12,6 +12,7 @@ public sealed class LibraryPage : Panel
     private readonly Label _count = new();
     private readonly Label _status = new();
     private readonly FlatButton _rescan = new();
+    private readonly FlatButton _fillAll = new();
     private readonly FlatButton _enrich = new();
     private readonly FlatButton _analyze = new();
     private readonly FlatButton _find = new();
@@ -98,7 +99,8 @@ public sealed class LibraryPage : Panel
 
         var actionDefs = new (FlatButton b, string text, int w, bool primary, Action click)[]
         {
-            (_enrich,  "Fill tags online", 104, true,  RunEnrich),
+            (_fillAll, "Fill every track", 100, true,  RunFillAll),
+            (_enrich,  "Fill selected",     88, false, RunEnrich),
             (_analyze, "BPM + key",         76, false, RunAnalyze),
             (_find,    "Find on YouTube",   98, false, RunFind),
             (_edit,    "Edit",              48, false, OpenEditor),
@@ -111,7 +113,8 @@ public sealed class LibraryPage : Panel
             b.Font = Theme.Small;
             b.Size = new Size(w, 24);
             b.Primary = primary;
-            b.Enabled = false;
+            // "Fill every track" works on whatever is shown, so it never needs a selection.
+            b.Enabled = ReferenceEquals(b, _fillAll);
             b.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             b.Click += (_, _) => click();
             _actions.Add(b);
@@ -336,14 +339,37 @@ public sealed class LibraryPage : Panel
         foreach (var b in new[] { _enrich, _analyze, _find, _reveal }) { b.Enabled = n > 0; b.Invalidate(); }
         _edit.Enabled = n == 1;
         _edit.Invalidate();
+
+        _fillAll.Enabled = _shown.Count > 0;
+        _fillAll.Text = _shown.Count == _all.Count
+            ? "Fill every track"
+            : $"Fill all {_shown.Count} shown";
+        _fillAll.Invalidate();
+
         if (n > 0) _status.Text = $"{n} selected";
     }
 
     // ------------------------------------------------------------ actions
 
-    private void RunEnrich()
+    private void RunEnrich() => Enrich(Selected());
+
+    /// <summary>
+    /// Fills every track currently shown, so the common case - pick "Incomplete",
+    /// fix the lot - doesn't need a select-all first.
+    /// </summary>
+    private void RunFillAll()
     {
-        var tracks = Selected();
+        if (_shown.Count == 0)
+        {
+            _status.Text = "Nothing shown to fill.";
+            _status.ForeColor = Theme.Warn;
+            return;
+        }
+        Enrich(_shown.ToList());
+    }
+
+    private void Enrich(IReadOnlyList<Track> tracks)
+    {
         if (tracks.Count == 0) return;
 
         using var dialog = new EnrichOptionsDialog(tracks.Count);

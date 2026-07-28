@@ -104,6 +104,16 @@ Scoring rewards an exact title match (50), exact artist match (30) and a duratio
 within two seconds (20). It penalises compilations, "greatest hits" packages and
 karaoke versions, because those are almost never what you actually wanted.
 
+**Results are merged, not just ranked.** No single source carries every field — Deezer
+has the year and ISRC but often no track number, iTunes has the track number and genre,
+MusicBrainz has the ISRC but rarely a genre. Applying only the winner would leave gaps
+you'd have to fill by hand, so the best match becomes the base and every blank field is
+filled from the next-best source that has it. Only candidates scoring close to the
+winner can contribute, so a weak match for a different song can't donate its album name.
+
+One lookup, everything filled. Measured on a real track: 7/9 fields from the top source
+alone, 9/9 after merging.
+
 ### Fields written
 
 Standard ID3v2.4 frames, so everything else reads them:
@@ -201,8 +211,10 @@ unless you mean it.
 ## Diagnostics
 
 ```bash
-TrackForge.exe --selftest           # library, naming, analyser, lookup
+TrackForge.exe --selftest           # library, naming, analyser, lookup, merge
 TrackForge.exe --selftest --online  # also exercises YouTube search
+TrackForge.exe --uitest             # window-handle leak check over 240 page switches
+TrackForge.exe --install-tools      # fetch yt-dlp and ffmpeg headlessly
 ```
 
 Checks the tools are present, verifies the naming rules, scans the library, scores the
