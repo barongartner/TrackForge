@@ -30,6 +30,7 @@ public sealed class GrabCard : CardPanel
     private byte[]? _artBytes;
     private string? _artUrl;
     private bool _suppressMatchEvent;
+    private bool _pushingFields;
 
     public Track Meta { get; } = new();
     public event Action<GrabCard>? RemoveRequested;
@@ -194,27 +195,39 @@ public sealed class GrabCard : CardPanel
         _remove.SetBounds(rx, 54, rightColumn, 20);
     }
 
+    /// <summary>
+    /// Writing a box fires TextChanged, which pulls every box back into Meta. Without
+    /// the guard the first assignment reads the still-empty boxes and wipes the values
+    /// the lookup just produced, so only one field per press ever survived.
+    /// </summary>
     private void PushMetaToFields()
     {
-        void Set(string key, string value)
+        _pushingFields = true;
+        try
         {
-            if (_fields.TryGetValue(key, out var box) && box.Text != value) box.Text = value ?? "";
-        }
+            void Set(string key, string value)
+            {
+                if (_fields.TryGetValue(key, out var box) && box.Text != value) box.Text = value ?? "";
+            }
 
-        Set("title", Meta.Title);
-        Set("artist", Meta.Artist);
-        Set("album", Meta.Album);
-        Set("albumartist", Meta.AlbumArtist);
-        Set("year", Meta.Year);
-        Set("genre", Meta.Genre);
-        Set("track", Meta.TrackNumber);
-        Set("disc", Meta.DiscNumber);
-        Set("bpm", Meta.Bpm);
-        Set("key", Meta.MusicalKey);
+            Set("title", Meta.Title);
+            Set("artist", Meta.Artist);
+            Set("album", Meta.Album);
+            Set("albumartist", Meta.AlbumArtist);
+            Set("year", Meta.Year);
+            Set("genre", Meta.Genre);
+            Set("track", Meta.TrackNumber);
+            Set("disc", Meta.DiscNumber);
+            Set("bpm", Meta.Bpm);
+            Set("key", Meta.MusicalKey);
+        }
+        finally { _pushingFields = false; }
     }
 
     private void PullFieldsToMeta()
     {
+        if (_pushingFields) return;
+
         string Get(string key) => _fields.TryGetValue(key, out var b) ? b.Text.Trim() : "";
 
         Meta.Title = Get("title");
@@ -439,6 +452,10 @@ public sealed class GrabCard : CardPanel
     }
 
     public bool IsGrabbed => !_grab.Enabled && _grab.Text == "Done";
+
+    /// <summary>Reads the actual text boxes, not Meta - that's where the bug showed.</summary>
+    internal Dictionary<string, string> FieldValuesForTesting =>
+        _fields.ToDictionary(kv => kv.Key, kv => kv.Value.Text.Trim());
 
     internal string StatusForTesting => _status.Text;
     internal string GrabButtonForTesting => _grab.Text;

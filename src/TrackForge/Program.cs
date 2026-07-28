@@ -30,6 +30,15 @@ internal static class Program
             return Core.UiStressTest.Run();
         }
 
+        if (args.Contains("--cardtest"))
+        {
+            AttachConsole(-1);
+            Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            return Core.CardTest.RunAsync(args).GetAwaiter().GetResult();
+        }
+
         if (args.Contains("--linktest"))
         {
             AttachConsole(-1);
