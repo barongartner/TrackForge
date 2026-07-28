@@ -14,6 +14,7 @@ public sealed class LibraryPage : Panel
     private readonly FlatButton _rescan = new();
     private readonly FlatButton _fillAll = new();
     private readonly FlatButton _enrich = new();
+    private readonly FlatButton _repair = new();
     private readonly FlatButton _analyze = new();
     private readonly FlatButton _find = new();
     private readonly FlatButton _edit = new();
@@ -100,11 +101,12 @@ public sealed class LibraryPage : Panel
         var actionDefs = new (FlatButton b, string text, int w, bool primary, Action click)[]
         {
             (_fillAll, "Fill every track", 100, true,  RunFillAll),
-            (_enrich,  "Fill selected",     88, false, RunEnrich),
-            (_analyze, "BPM + key",         76, false, RunAnalyze),
-            (_find,    "Find on YouTube",   98, false, RunFind),
-            (_edit,    "Edit",              48, false, OpenEditor),
-            (_reveal,  "Show file",         66, false, RevealSelected),
+            (_enrich,  "Fill selected",     84, false, RunEnrich),
+            (_repair,  "Repair tags",       78, false, RunRepair),
+            (_analyze, "BPM + key",         72, false, RunAnalyze),
+            (_find,    "Find on YouTube",   96, false, RunFind),
+            (_edit,    "Edit",              44, false, OpenEditor),
+            (_reveal,  "Show file",         64, false, RevealSelected),
         };
 
         foreach (var (b, text, w, primary, click) in actionDefs)
@@ -113,8 +115,8 @@ public sealed class LibraryPage : Panel
             b.Font = Theme.Small;
             b.Size = new Size(w, 24);
             b.Primary = primary;
-            // "Fill every track" works on whatever is shown, so it never needs a selection.
-            b.Enabled = ReferenceEquals(b, _fillAll);
+            // These act on whatever is shown, so they never need a selection.
+            b.Enabled = ReferenceEquals(b, _fillAll) || ReferenceEquals(b, _repair);
             b.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             b.Click += (_, _) => click();
             _actions.Add(b);
@@ -381,6 +383,10 @@ public sealed class LibraryPage : Panel
             : $"Fill all {_shown.Count} shown";
         _fillAll.Invalidate();
 
+        _repair.Enabled = _shown.Count > 0 || n > 0;
+        _repair.Text = n > 0 ? $"Repair {n}" : "Repair tags";
+        _repair.Invalidate();
+
         if (n > 0) _status.Text = $"{n} selected";
     }
 
@@ -412,6 +418,36 @@ public sealed class LibraryPage : Panel
 
         _forge.EnqueueEnrich(tracks, dialog.Options);
         _status.Text = $"Filling tags on {tracks.Count} - see Jobs";
+        _status.ForeColor = Theme.TextDim;
+    }
+
+    /// <summary>
+    /// Rewrites tags in the format Windows reads. Acts on selection if there is one,
+    /// otherwise everything shown, so the common case is a single click.
+    /// </summary>
+    private void RunRepair()
+    {
+        var tracks = Selected();
+        if (tracks.Count == 0) tracks = _shown.ToList();
+        if (tracks.Count == 0)
+        {
+            _status.Text = "Nothing to repair.";
+            _status.ForeColor = Theme.Warn;
+            return;
+        }
+
+        var answer = MessageBox.Show(this,
+            $"Rewrite tags on {tracks.Count} file(s) as ID3v2.3?\n\n" +
+            "This fixes genres showing as numbers and cover art showing black in " +
+            "Windows. Nothing is downloaded and no values change - only the tag " +
+            "format is rewritten.\n\n" +
+            "Files open in another player (djay, VirtualDJ, Windows Media Player) " +
+            "will be skipped and reported.",
+            "Repair tags", MessageBoxButtons.OKCancel, MessageBoxIcon.Information);
+        if (answer != DialogResult.OK) return;
+
+        _forge.EnqueueRetag(tracks);
+        _status.Text = $"Repairing {tracks.Count} - see Jobs";
         _status.ForeColor = Theme.TextDim;
     }
 

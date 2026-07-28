@@ -208,6 +208,62 @@ public sealed class ForgeService : IDisposable
         });
     }
 
+    /// <summary>
+    /// Rewrites tags already on disk in the format Windows reads (ID3v2.3, text
+    /// genres, no ID3v1). Fetches nothing - every value is read from the file and
+    /// written straight back, so it is purely a format repair.
+    /// </summary>
+    public Job EnqueueRetag(IReadOnlyList<Track> tracks)
+    {
+        return Jobs.Enqueue("retag", $"Repair tags on {tracks.Count} track(s)", (job, ct) =>
+            Task.Run(() =>
+            {
+                int repaired = 0, locked = 0;
+                var lockedNames = new List<string>();
+
+                for (int i = 0; i < tracks.Count; i++)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var track = tracks[i];
+                    Jobs.Report(job, (double)i / tracks.Count * 100,
+                        $"{i + 1}/{tracks.Count}  {track.FileName}");
+
+                    try
+                    {
+                        var art = TagService.ReadArt(track.Path);
+                        if (Config.ForceTitleCase)
+                        {
+                            track.Title = NameFormatter.TitleCase(track.Title);
+                            track.Artist = NameFormatter.TitleCase(track.Artist);
+                            track.Album = NameFormatter.TitleCase(track.Album);
+                            track.AlbumArtist = NameFormatter.TitleCase(track.AlbumArtist);
+                        }
+                        TagService.Write(track, art);
+                        repaired++;
+                    }
+                    catch (IOException)
+                    {
+                        // Almost always another player holding the file open.
+                        locked++;
+                        if (lockedNames.Count < 5) lockedNames.Add(track.FileName);
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        locked++;
+                        if (lockedNames.Count < 5) lockedNames.Add(track.FileName);
+                    }
+                }
+
+                var message = $"Repaired {repaired}";
+                if (locked > 0)
+                    message += $", {locked} in use by another app ({string.Join(", ", lockedNames)}" +
+                               (locked > lockedNames.Count ? ", ..." : "") + ")";
+
+                Jobs.Report(job, 100, message);
+                RaiseLibraryChanged();
+            }, ct));
+    }
+
     /// <summary>Analyse BPM and key for library files, no network involved.</summary>
     public Job EnqueueAnalyze(IReadOnlyList<Track> tracks, bool write = true)
     {
