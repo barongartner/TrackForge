@@ -233,17 +233,30 @@ public static class TagService
     /// </summary>
     public static int RemoveBlankFolderArt(string folder)
     {
-        var names = new[] { "Folder.jpg", "AlbumArtSmall.jpg", "Folder.jpeg", "AlbumArt.jpg" };
-        int removed = 0;
+        // Folder art describes a whole folder. When the folder holds tracks from more
+        // than one album - which a flat library always does - it is wrong for every
+        // album but one, so the image being valid is irrelevant. That is why the
+        // library list showed one album's cover against everything in it.
+        bool multipleAlbums = CountDistinctAlbums(folder) > 1;
 
-        foreach (var name in names)
+        int removed = 0;
+        var candidates = new List<string>();
+
+        foreach (var name in new[] { "Folder.jpg", "Folder.jpeg", "AlbumArtSmall.jpg", "AlbumArt.jpg" })
         {
             var path = Path.Combine(folder, name);
-            if (!File.Exists(path)) continue;
+            if (File.Exists(path)) candidates.Add(path);
+        }
+        try { candidates.AddRange(Directory.GetFiles(folder, "AlbumArt_*.jpg")); } catch { }
 
+        foreach (var path in candidates)
+        {
             try
             {
-                if (!IsEffectivelyBlank(path)) continue;
+                // In a single-album folder the art is plausibly right, so only clear
+                // it when it is a blank placeholder.
+                if (!multipleAlbums && !IsEffectivelyBlank(path)) continue;
+
                 File.SetAttributes(path, FileAttributes.Normal);
                 File.Delete(path);
                 removed++;
@@ -251,20 +264,30 @@ public static class TagService
             catch { /* in use or protected: leave it */ }
         }
 
-        // WMP also drops AlbumArt_{guid}_Large.jpg style files.
+        return removed;
+    }
+
+    /// <summary>How many different albums sit directly in this folder.</summary>
+    private static int CountDistinctAlbums(string folder)
+    {
+        var albums = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         try
         {
-            foreach (var path in Directory.GetFiles(folder, "AlbumArt_*.jpg"))
+            foreach (var file in Directory.EnumerateFiles(folder))
             {
-                if (!IsEffectivelyBlank(path)) continue;
-                File.SetAttributes(path, FileAttributes.Normal);
-                File.Delete(path);
-                removed++;
+                if (!IsAudio(file)) continue;
+                try
+                {
+                    using var f = TagLib.File.Create(file);
+                    var album = f.Tag.Album;
+                    albums.Add(string.IsNullOrWhiteSpace(album) ? "?" + Path.GetFileName(file) : album);
+                }
+                catch { }
+                if (albums.Count > 1) return albums.Count;   // enough to decide
             }
         }
         catch { }
-
-        return removed;
+        return albums.Count;
     }
 
     /// <summary>
