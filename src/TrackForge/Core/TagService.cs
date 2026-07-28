@@ -222,6 +222,85 @@ public static class TagService
         }
     }
 
+    /// <summary>
+    /// Windows Media Player caches folder-level art as Folder.jpg / AlbumArtSmall.jpg.
+    /// If it indexed the folder while it could not read our embedded art, it writes
+    /// solid black placeholders - and then keeps showing those in its library list
+    /// even after the tags are fixed. In a flat music folder holding many albums the
+    /// files are wrong by definition anyway.
+    ///
+    /// Only provably blank images are removed, and Windows regenerates them.
+    /// </summary>
+    public static int RemoveBlankFolderArt(string folder)
+    {
+        var names = new[] { "Folder.jpg", "AlbumArtSmall.jpg", "Folder.jpeg", "AlbumArt.jpg" };
+        int removed = 0;
+
+        foreach (var name in names)
+        {
+            var path = Path.Combine(folder, name);
+            if (!File.Exists(path)) continue;
+
+            try
+            {
+                if (!IsEffectivelyBlank(path)) continue;
+                File.SetAttributes(path, FileAttributes.Normal);
+                File.Delete(path);
+                removed++;
+            }
+            catch { /* in use or protected: leave it */ }
+        }
+
+        // WMP also drops AlbumArt_{guid}_Large.jpg style files.
+        try
+        {
+            foreach (var path in Directory.GetFiles(folder, "AlbumArt_*.jpg"))
+            {
+                if (!IsEffectivelyBlank(path)) continue;
+                File.SetAttributes(path, FileAttributes.Normal);
+                File.Delete(path);
+                removed++;
+            }
+        }
+        catch { }
+
+        return removed;
+    }
+
+    /// <summary>True when an image is a solid near-black (or near-white) placeholder.</summary>
+    private static bool IsEffectivelyBlank(string path)
+    {
+        try
+        {
+            // Read the bytes first. Image.FromStream(File.OpenRead(...)) keeps the
+            // file handle alive for the lifetime of the Image, which then blocks the
+            // very delete this check exists to authorise.
+            var data = File.ReadAllBytes(path);
+            using var buffer = new MemoryStream(data);
+            using var source = Image.FromStream(buffer);
+            using var small = new Bitmap(8, 8, PixelFormat.Format24bppRgb);
+            using (var g = Graphics.FromImage(small))
+                g.DrawImage(source, 0, 0, 8, 8);
+
+            double total = 0;
+            double min = 255, max = 0;
+            for (int x = 0; x < 8; x++)
+                for (int y = 0; y < 8; y++)
+                {
+                    var p = small.GetPixel(x, y);
+                    double v = (p.R + p.G + p.B) / 3.0;
+                    total += v;
+                    min = Math.Min(min, v);
+                    max = Math.Max(max, v);
+                }
+
+            double mean = total / 64.0;
+            // Flat and dark, or flat and blown out: nothing anyone would call a cover.
+            return (mean < 12 || mean > 245) && (max - min) < 10;
+        }
+        catch { return false; }
+    }
+
     public static Image? ImageFromBytes(byte[]? data)
     {
         if (data is not { Length: > 0 }) return null;

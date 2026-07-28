@@ -254,7 +254,19 @@ public sealed class ForgeService : IDisposable
                     }
                 }
 
+                // Windows Media Player's black Folder.jpg placeholders survive a tag
+                // fix and keep showing in its library list, so clear them out too.
+                int blankArt = 0;
+                foreach (var folder in tracks
+                             .Select(t => Path.GetDirectoryName(t.Path))
+                             .Where(d => !string.IsNullOrEmpty(d))
+                             .Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    blankArt += TagService.RemoveBlankFolderArt(folder!);
+                }
+
                 var message = $"Repaired {repaired}";
+                if (blankArt > 0) message += $", removed {blankArt} blank folder image(s)";
                 if (locked > 0)
                     message += $", {locked} in use by another app ({string.Join(", ", lockedNames)}" +
                                (locked > lockedNames.Count ? ", ..." : "") + ")";

@@ -59,6 +59,17 @@ public static class RetagTool
             }
         }
 
+        // Same cleanup the in-app repair does: Windows Media Player's black
+        // Folder.jpg placeholders keep showing in its library list after a tag fix.
+        int blankArt = 0;
+        foreach (var dir in files.Select(Path.GetDirectoryName)
+                                 .Where(d => !string.IsNullOrEmpty(d))
+                                 .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            blankArt += TagService.RemoveBlankFolderArt(dir!);
+        }
+        if (blankArt > 0) Console.WriteLine($"\n           removed {blankArt} blank folder image(s)");
+
         Console.WriteLine($"\n           {repaired} rewritten, {unchanged} skipped, {failed} failed");
         Console.WriteLine(new string('-', 70));
         Console.WriteLine(failed == 0 ? "PASS  tags rewritten as ID3v2.3" : $"FAIL  {failed} file(s) could not be written");
