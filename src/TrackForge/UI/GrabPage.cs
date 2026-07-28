@@ -8,6 +8,7 @@ public sealed class GrabPage : Panel
     private readonly ForgeService _forge;
 
     private readonly FlatTextBox _urlBox = new(multiline: true);
+    private readonly FlatButton _download = new();
     private readonly FlatButton _fetch = new();
     private readonly FlatButton _grabAll = new();
     private readonly FlatButton _lookupAll = new();
@@ -33,12 +34,15 @@ public sealed class GrabPage : Panel
         _urlBox.PlaceholderText = "Paste YouTube links, one per line. Playlists expand.";
         _urlBox.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 
+        // One button does the whole job. Pasting a link and pressing the obvious
+        // button has to actually download the track - anything else reads as broken.
         var buttons = new (FlatButton b, string text, int w, bool primary, Action click)[]
         {
-            (_fetch,     "Fetch",       78, true,  () => _ = FetchAsync()),
-            (_lookupAll, "Look up all", 88, false, () => _ = LookupAllAsync()),
-            (_grabAll,   "Grab all",    76, false, GrabAll),
-            (_clear,     "Clear",       58, false, ClearCards),
+            (_download,  "Download",     86, true,  () => _ = FetchAsync(autoGrab: true)),
+            (_fetch,     "Review first", 88, false, () => _ = FetchAsync(autoGrab: false)),
+            (_lookupAll, "Look up all",  88, false, () => _ = LookupAllAsync()),
+            (_grabAll,   "Grab all",     76, false, GrabAll),
+            (_clear,     "Clear",        58, false, ClearCards),
         };
 
         int x = Theme.Pad;
@@ -49,7 +53,7 @@ public sealed class GrabPage : Panel
             b.Location = new Point(x, 74);
             b.Primary = primary;
             b.Click += (_, _) => click();
-            if (b != _fetch) b.Enabled = false;
+            if (b != _download && b != _fetch) b.Enabled = false;
             intake.Controls.Add(b);
             x += w + Theme.Gap;
         }
@@ -77,7 +81,9 @@ public sealed class GrabPage : Panel
         _cards.Padding = new Padding(0, Theme.Gap, 0, 0);
         _cards.Resize += (_, _) => ResizeCards();
 
-        _empty.Text = "Nothing queued.\r\n\r\nPaste a link above and hit Fetch.";
+        _empty.Text = "Paste a YouTube link above and hit Download.\r\n\r\n" +
+                      "It finds the tags, grabs the audio and files it for you.\r\n" +
+                      "Use Review first if you want to check the tags before it downloads.";
         _empty.Dock = DockStyle.Fill;
         _empty.TextAlign = ContentAlignment.MiddleCenter;
         _empty.ForeColor = Theme.TextFaint;
@@ -89,11 +95,22 @@ public sealed class GrabPage : Panel
 
         _urlBox.Inner.KeyDown += (_, e) =>
         {
-            if (e.Control && e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; _ = FetchAsync(); }
+            if (e.Control && e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; _ = FetchAsync(autoGrab: true); }
         };
 
         UpdateButtons();
     }
+
+    // ---- test hooks: drive the exact path a user clicks -------------------
+
+    internal bool ToolsReadyForTesting => _toolsReady;
+    internal string NoteForTesting => _note.Text;
+    internal int CardCountForTesting => _cards.Controls.OfType<GrabCard>().Count();
+    internal IEnumerable<GrabCard> CardsForTesting => _cards.Controls.OfType<GrabCard>();
+
+    internal void SetUrlForTesting(string url) => _urlBox.Text = url;
+
+    internal Task ClickDownloadForTesting() => FetchAsync(autoGrab: true);
 
     public void SetToolsReady(bool ready)
     {
@@ -117,7 +134,12 @@ public sealed class GrabPage : Panel
 
     // -------------------------------------------------------------- fetch
 
-    private async Task FetchAsync()
+    /// <summary>
+    /// Reads each link. With autoGrab it then looks every track up and downloads it
+    /// without further clicks - the path most people want. Without it, cards are left
+    /// for review.
+    /// </summary>
+    private async Task FetchAsync(bool autoGrab)
     {
         if (!_toolsReady)
         {
@@ -127,9 +149,15 @@ public sealed class GrabPage : Panel
             return;
         }
 
+        // Dedupe after normalising: several sidebar links can point at the same video
+        // once the radio-mix noise is stripped off.
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var urls = _urlBox.Text
             .Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
-            .Select(s => s.Trim()).Where(s => s.Length > 0).Distinct().ToList();
+            .Select(s => s.Trim())
+            .Where(s => s.Length > 0)
+            .Where(s => seen.Add(YtDlp.NormalizeForProbe(s).url))
+            .ToList();
 
         if (urls.Count == 0)
         {
@@ -138,18 +166,23 @@ public sealed class GrabPage : Panel
             return;
         }
 
+        _download.Enabled = false;
         _fetch.Enabled = false;
-        _fetch.Text = "...";
+        var active = autoGrab ? _download : _fetch;
+        var originalText = active.Text;
+        active.Text = "...";
         _note.ForeColor = Theme.TextDim;
 
-        int added = 0, failed = 0;
+        var fresh = new List<GrabCard>();
+        int failed = 0;
+
         foreach (var url in urls)
         {
             _note.Text = "Reading " + url;
             try
             {
                 var (entries, playlist) = await _forge.Downloader.ProbeAsync(url);
-                foreach (var entry in entries) { AddCard(entry); added++; }
+                foreach (var entry in entries) fresh.Add(AddCard(entry));
                 if (playlist is not null) _note.Text = $"Playlist: {playlist} ({entries.Count})";
             }
             catch (Exception ex)
@@ -160,20 +193,34 @@ public sealed class GrabPage : Panel
             }
         }
 
-        _fetch.Enabled = true;
-        _fetch.Text = "Fetch";
+        if (failed == 0) _urlBox.Text = "";
+        UpdateButtons();
 
-        if (failed == 0)
+        if (autoGrab && fresh.Count > 0)
         {
-            _note.Text = $"{added} queued. Look them up, check the tags, then grab.";
+            for (int i = 0; i < fresh.Count; i++)
+            {
+                _note.Text = $"Tagging {i + 1} of {fresh.Count}...";
+                _note.ForeColor = Theme.TextDim;
+                await fresh[i].LookupAsync();
+                fresh[i].Grab();
+            }
+            _note.Text = $"{fresh.Count} downloading. Watch the Jobs panel or the bars below.";
             _note.ForeColor = Theme.TextFaint;
-            _urlBox.Text = "";
+        }
+        else if (failed == 0)
+        {
+            _note.Text = $"{fresh.Count} queued. Look them up, check the tags, then grab.";
+            _note.ForeColor = Theme.TextFaint;
         }
 
+        active.Text = originalText;
+        _download.Enabled = true;
+        _fetch.Enabled = true;
         UpdateButtons();
     }
 
-    private void AddCard(VideoEntry entry)
+    private GrabCard AddCard(VideoEntry entry)
     {
         var card = new GrabCard(_forge, entry) { Width = CardWidth() };
         card.RemoveRequested += c =>
@@ -183,6 +230,7 @@ public sealed class GrabPage : Panel
             UpdateButtons();
         };
         _cards.Controls.Add(card);
+        return card;
     }
 
     private int CardWidth() => Math.Max(640, _cards.ClientSize.Width - Theme.Pad);

@@ -439,4 +439,8 @@ public sealed class GrabCard : CardPanel
     }
 
     public bool IsGrabbed => !_grab.Enabled && _grab.Text == "Done";
+
+    internal string StatusForTesting => _status.Text;
+    internal string GrabButtonForTesting => _grab.Text;
+    internal double ProgressForTesting => _progress.Value;
 }

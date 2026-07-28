@@ -139,6 +139,15 @@ public sealed class MainForm : Form
 
     internal void StressLibraryForTesting() => _library.StressForTesting();
 
+    internal GrabPage GrabPageForTesting => _grab;
+
+    /// <summary>Runs the real startup sequence without the first-run tool dialog.</summary>
+    internal Task StartupForTestingAsync()
+    {
+        _settings.LoadFromConfig();
+        return RefreshToolStatusAsync(offerInstall: false);
+    }
+
     private void Show(int index)
     {
         for (int i = 0; i < _pages.Count; i++)

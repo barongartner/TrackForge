@@ -30,6 +30,12 @@ internal static class Program
             return Core.UiStressTest.Run();
         }
 
+        if (args.Contains("--linktest"))
+        {
+            AttachConsole(-1);
+            return Core.LinkTest.RunAsync(args).GetAwaiter().GetResult();
+        }
+
         if (args.Contains("--grabtest"))
         {
             AttachConsole(-1);

@@ -66,6 +66,67 @@ public sealed partial class YtDlp
 
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(120);
 
+    /// <summary>
+    /// Works out what a link actually means.
+    ///
+    /// A "watch" link carrying a radio mix (list=RD..., or start_radio=1) is what you
+    /// get from YouTube's autoplay sidebar. The mix is an endless generated stream, so
+    /// expanding it queues hundreds of unrelated tracks. What the user wanted was the
+    /// one song they were listening to, so those collapse to the single video.
+    ///
+    /// Real playlists - /playlist?list=..., or a watch link carrying a genuine
+    /// PL/UU/OL/LL list - still expand into every track.
+    /// </summary>
+    public static (string url, bool singleVideo) NormalizeForProbe(string raw)
+    {
+        raw = (raw ?? "").Trim();
+        if (raw.Length == 0) return (raw, false);
+
+        Uri uri;
+        try { uri = new Uri(raw); }
+        catch { return (raw, false); }
+
+        var host = uri.Host.Replace("www.", "", StringComparison.OrdinalIgnoreCase);
+        bool isYouTube = host.EndsWith("youtube.com", StringComparison.OrdinalIgnoreCase)
+                      || host.Equals("youtu.be", StringComparison.OrdinalIgnoreCase);
+        if (!isYouTube) return (raw, false);
+
+        var query = ParseQuery(uri.Query);
+        query.TryGetValue("v", out var videoId);
+        query.TryGetValue("list", out var list);
+        query.TryGetValue("start_radio", out var startRadio);
+
+        // youtu.be/<id>
+        if (host.Equals("youtu.be", StringComparison.OrdinalIgnoreCase))
+            videoId ??= uri.AbsolutePath.Trim('/');
+
+        // A bare /playlist link is unambiguous: the user wants the whole thing.
+        if (uri.AbsolutePath.StartsWith("/playlist", StringComparison.OrdinalIgnoreCase))
+            return (raw, false);
+
+        bool isRadio = startRadio == "1"
+                    || (list is not null && list.StartsWith("RD", StringComparison.OrdinalIgnoreCase));
+
+        if (isRadio && !string.IsNullOrWhiteSpace(videoId))
+            return ($"https://www.youtube.com/watch?v={videoId}", true);
+
+        // A watch link with a genuine playlist keeps the playlist.
+        return (raw, false);
+    }
+
+    private static Dictionary<string, string> ParseQuery(string query)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in (query ?? "").TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var i = pair.IndexOf('=');
+            if (i <= 0) continue;
+            var key = Uri.UnescapeDataString(pair[..i]);
+            if (!result.ContainsKey(key)) result[key] = Uri.UnescapeDataString(pair[(i + 1)..]);
+        }
+        return result;
+    }
+
     private static void KillQuietly(Process p)
     {
         try { if (!p.HasExited) p.Kill(entireProcessTree: true); } catch { }
@@ -124,8 +185,13 @@ public sealed partial class YtDlp
     public async Task<(List<VideoEntry> entries, string? playlistTitle)> ProbeAsync(
         string url, CancellationToken ct = default)
     {
-        var psi = NewPsi(YtDlpPath, new[]
-            { "-J", "--no-warnings", "--flat-playlist", "--ignore-config", url });
+        var (probeUrl, singleVideo) = NormalizeForProbe(url);
+
+        var args = new List<string> { "-J", "--no-warnings", "--flat-playlist", "--ignore-config" };
+        if (singleVideo) args.Add("--no-playlist");
+        args.Add(probeUrl);
+
+        var psi = NewPsi(YtDlpPath, args);
 
         using var p = Process.Start(psi) ?? throw new InvalidOperationException(
             "Could not start yt-dlp. Install it with:  pip install -U yt-dlp");
