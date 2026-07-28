@@ -1,0 +1,15 @@
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.vscode/
+publish/
+artifacts/
+
+*.log
+config.json
+
+Thumbs.db
+desktop.ini
+.DS_Store
