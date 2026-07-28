@@ -46,11 +46,20 @@ public sealed partial class YtDlp
 
     public YtDlp(AppConfig cfg) => _cfg = cfg;
 
-    public string YtDlpPath => Resolve(_cfg.YtDlpPath, "yt-dlp");
-    public string FfmpegPath => Resolve(_cfg.FfmpegPath, "ffmpeg");
+    public string YtDlpPath => Resolve(_cfg.YtDlpPath, ToolInstaller.YtDlpExe, "yt-dlp");
+    public string FfmpegPath => Resolve(_cfg.FfmpegPath, ToolInstaller.FfmpegExe, "ffmpeg");
 
-    private static string Resolve(string configured, string fallback)
-        => !string.IsNullOrWhiteSpace(configured) && File.Exists(configured) ? configured : fallback;
+    /// <summary>
+    /// An explicit setting wins, then our own tools folder, then whatever is on PATH.
+    /// The bundled copy taking priority over PATH means a stale system yt-dlp can't
+    /// break downloads once we've installed a current one.
+    /// </summary>
+    private static string Resolve(string configured, string bundled, string onPath)
+    {
+        if (!string.IsNullOrWhiteSpace(configured) && File.Exists(configured)) return configured;
+        if (File.Exists(bundled)) return bundled;
+        return onPath;
+    }
 
     [GeneratedRegex(@"\[download\]\s+([\d.]+)%")]
     private static partial Regex ProgressLine();

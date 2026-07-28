@@ -6,6 +6,9 @@ obj/
 .vscode/
 publish/
 artifacts/
+installer/publish/
+installer/out/
+*.wixpdb
 
 *.log
 config.json

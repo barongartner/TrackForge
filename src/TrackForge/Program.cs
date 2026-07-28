@@ -20,6 +20,12 @@ internal static class Program
             return Core.SelfTest.RunAsync(args).GetAwaiter().GetResult();
         }
 
+        if (args.Contains("--install-tools"))
+        {
+            AttachConsole(-1);
+            return InstallTools().GetAwaiter().GetResult();
+        }
+
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
@@ -29,6 +35,32 @@ internal static class Program
 
         Application.Run(new MainForm());
         return 0;
+    }
+
+    /// <summary>Headless tool bootstrap, so setup can be scripted or verified.</summary>
+    private static async Task<int> InstallTools()
+    {
+        var progress = new Progress<(double percent, string message)>(p =>
+            Console.Write($"\r  {p.message,-58}"));
+
+        try
+        {
+            Console.WriteLine($"Installing into {Core.ToolInstaller.ToolsDirectory}\n");
+
+            await Core.ToolInstaller.InstallYtDlpAsync(progress);
+            Console.WriteLine();
+            await Core.ToolInstaller.InstallFfmpegAsync(progress);
+            Console.WriteLine();
+
+            Console.WriteLine($"\n  yt-dlp   {(Core.ToolInstaller.HasYtDlp ? "ok" : "MISSING")}");
+            Console.WriteLine($"  ffmpeg   {(Core.ToolInstaller.HasFfmpeg ? "ok" : "MISSING")}");
+            return Core.ToolInstaller.HasYtDlp && Core.ToolInstaller.HasFfmpeg ? 0 : 1;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\n  failed: {ex.Message}");
+            return 1;
+        }
     }
 
     private static void Crash(Exception? ex)

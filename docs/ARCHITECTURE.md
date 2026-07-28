@@ -178,6 +178,27 @@ The rule is that no background failure should ever take down the app.
 The only place errors are surfaced loudly is where the user explicitly asked for
 something and it didn't happen: a failed tag write in the editor gets a message box.
 
+## Packaging and the tool bootstrap
+
+`installer/build.ps1` publishes the app self-contained and single-file, then hands it
+to WiX 5 to produce `TrackForge-<version>-x64.msi`. Self-contained means the installed
+app has no .NET prerequisite — the price is a ~65 MB executable and a ~124 MB package.
+
+WiX is pinned to 5.0.2 deliberately. WiX 6 and 7 refuse to run without accepting the
+Open Source Maintenance Fee EULA, which is a paid licensing decision.
+
+**yt-dlp and ffmpeg are not in the installer.** `ToolInstaller` downloads them into
+`%LOCALAPPDATA%\TrackForge\tools` on first run. Three reasons:
+
+- yt-dlp goes stale within weeks of a YouTube change; a bundled copy would ship broken.
+  Fetching on demand also gives the user a working update button.
+- ffmpeg builds are GPL, and redistributing them carries source-offer obligations.
+- `%LOCALAPPDATA%` is writable without admin rights, so updating tools never needs UAC.
+
+`YtDlp.Resolve` picks an explicit config path first, then the bundled copy, then `PATH`.
+Bundled beating `PATH` matters: a stale system-wide yt-dlp shouldn't be able to break
+downloads once TrackForge has fetched a current one.
+
 ## Adding things
 
 **A new metadata source** — add a method to `MetadataClient` returning

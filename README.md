@@ -46,18 +46,21 @@ behaviours you want.
 
 ## Install
 
-### Requirements
+Download **`TrackForge-1.0.0-x64.msi`** from the
+[latest release](https://github.com/barongartner/TrackForge/releases/latest) and run it.
 
-| Tool | Why | Install |
-|---|---|---|
-| Windows 10 or 11 | — | — |
-| [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) | Runs the app | `winget install Microsoft.DotNet.DesktopRuntime.8` |
-| [yt-dlp](https://github.com/yt-dlp/yt-dlp) | Downloads the audio | `pip install -U yt-dlp` |
-| [ffmpeg](https://ffmpeg.org/) | Transcodes and decodes for analysis | `winget install Gyan.FFmpeg` |
+That's the whole thing. The installer needs nothing on your machine first:
 
-Both `yt-dlp` and `ffmpeg` need to be on your `PATH`. TrackForge checks on startup
-and tells you in the title bar if either is missing. You can also point at specific
-executables in `config.json`.
+- **No .NET install.** The app ships self-contained.
+- **No yt-dlp or ffmpeg install.** TrackForge downloads them itself on first run —
+  about 40 MB, into `%LOCALAPPDATA%\TrackForge\tools`, no admin rights needed. You get
+  a small dialog with a progress bar the first time you open it. **Settings → Install /
+  update tools** re-runs it any time, which is also how you keep yt-dlp current.
+
+The only requirement is Windows 10 or 11, 64-bit.
+
+If you'd rather manage the tools yourself, TrackForge uses whatever is on your `PATH`
+when its own copies aren't present, and `config.json` can point at specific executables.
 
 ### Build from source
 
@@ -69,12 +72,18 @@ dotnet build -c Release
 
 The executable lands in `src/TrackForge/bin/Release/net8.0-windows/TrackForge.exe`.
 
-For a single self-contained file that doesn't need the .NET runtime installed:
+To rebuild the installer (needs [WiX 5](https://wixtoolset.org/)):
 
-```bash
-dotnet publish src/TrackForge/TrackForge.csproj -c Release -r win-x64 ^
-  --self-contained true -p:PublishSingleFile=true
+```powershell
+dotnet tool install --global wix --version 5.0.2
+wix extension add -g WixToolset.UI.wixext/5.0.2
+wix extension add -g WixToolset.Util.wixext/5.0.2
+
+.\installer\build.ps1
 ```
+
+WiX is pinned to 5 on purpose — versions 6 and 7 require accepting a paid Open Source
+Maintenance Fee EULA.
 
 ---
 
@@ -246,6 +255,7 @@ src/TrackForge/
     MatchCandidate.cs  A scored result from one of those sources
     YtDlp.cs           Drives yt-dlp and ffmpeg
     JobQueue.cs        Background workers with progress reporting
+    ToolInstaller.cs   Downloads yt-dlp and ffmpeg on first run
     ForgeService.cs    Ties it all together
     SelfTest.cs        --selftest diagnostics
   UI/
@@ -260,7 +270,13 @@ src/TrackForge/
     TagEditorDialog.cs Full tag editor for one file
     ArtPickerDialog.cs Cover art chooser
     EnrichOptionsDialog.cs  Which fields a bulk fill may touch
+    ToolSetupDialog.cs First-run yt-dlp / ffmpeg download
     JobsPanel.cs       The jobs dock
+
+installer/
+  TrackForge.wxs     WiX 5 package definition
+  build.ps1          Publish self-contained, then build the MSI
+  License.rtf        Shown on the installer's licence page
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit together.
@@ -276,8 +292,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit together
 - **djay's key data isn't imported.** Its `keySignatureIndex` is an internal
   enumeration that isn't documented; BPM is imported, key is detected ourselves.
 - **No undo on tag writes.** Bulk operations write straight to disk.
-- **yt-dlp breaks when YouTube changes things.** Keep it updated:
-  `pip install -U yt-dlp`.
+- **yt-dlp breaks when YouTube changes things.** When downloads start failing, hit
+  **Settings → Install / update tools** to pull the current build.
+- **The MSI is unsigned.** SmartScreen will warn on first run — More info → Run anyway.
 
 ---
 

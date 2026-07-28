@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <!--
+    TrackForge installer.
+
+    The app is published self-contained, so there is no .NET prerequisite to chase.
+    yt-dlp and ffmpeg are NOT bundled - the app fetches them into %LOCALAPPDATA% on
+    first run. That keeps the installer small, keeps yt-dlp current (it goes stale
+    within weeks), and avoids redistributing GPL ffmpeg builds.
+  -->
+
+  <Package Name="TrackForge"
+           Manufacturer="Baron Gartner"
+           Version="1.0.0"
+           UpgradeCode="8E3F1C42-6B7A-4D59-9E13-2A5C7F8D4B60"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <SummaryInformation Description="TrackForge - music library manager and YouTube tagging pipeline" />
+
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer version of TrackForge is already installed." />
+
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="TrackForgeIcon" SourceFile="$(PublishDir)\TrackForge.exe" />
+    <Property Id="ARPPRODUCTICON" Value="TrackForgeIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/barongartner/TrackForge" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/barongartner/TrackForge/issues" />
+    <Property Id="ARPNOREPAIR" Value="1" />
+
+    <!-- Directory layout -->
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="TrackForge" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="AppShortcutFolder" Name="TrackForge" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+
+    <!-- Payload -->
+    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
+      <Component Id="TrackForgeExeComponent" Guid="D14B7E90-3A25-4C88-B6F1-9C0E5D3A7218">
+        <File Id="TrackForgeExe" Source="$(PublishDir)\TrackForge.exe" KeyPath="yes" />
+      </Component>
+
+      <Component Id="ReadmeComponent" Guid="6F2A9C15-8D74-42E3-A5B0-1E7C4F9D2B83">
+        <File Id="ReadmeFile" Source="$(ProjectRoot)\README.md" KeyPath="yes" />
+      </Component>
+
+      <Component Id="LicenseComponent" Guid="B37D5E28-4A16-4F9C-8D02-7E1B6A3C5F94">
+        <File Id="LicenseFile" Source="$(ProjectRoot)\LICENSE" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Start menu -->
+    <ComponentGroup Id="StartMenuShortcuts" Directory="AppShortcutFolder">
+      <Component Id="StartMenuComponent" Guid="A9C4F132-7B58-4E60-9137-5D8A2C6E4B71">
+        <Shortcut Id="StartMenuShortcut"
+                  Name="TrackForge"
+                  Description="Music library manager and YouTube tagging pipeline"
+                  Target="[INSTALLFOLDER]TrackForge.exe"
+                  WorkingDirectory="INSTALLFOLDER" />
+        <RemoveFolder Id="RemoveAppShortcutFolder" Directory="AppShortcutFolder" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\TrackForge"
+                       Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Desktop, controlled by the checkbox on the install-directory page -->
+    <ComponentGroup Id="DesktopShortcut" Directory="DesktopFolder">
+      <Component Id="DesktopShortcutComponent"
+                 Guid="4E8B1D67-2F93-45AC-B71E-8C0D6A5F3927"
+                 Condition="INSTALLDESKTOPSHORTCUT = 1">
+        <Shortcut Id="DesktopShortcutEntry"
+                  Name="TrackForge"
+                  Description="Music library manager and YouTube tagging pipeline"
+                  Target="[INSTALLFOLDER]TrackForge.exe"
+                  WorkingDirectory="INSTALLFOLDER" />
+        <RegistryValue Root="HKCU" Key="Software\TrackForge"
+                       Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="Main" Title="TrackForge" Level="1" AllowAdvertise="no"
+             Description="The application itself.">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentGroupRef Id="StartMenuShortcuts" />
+      <ComponentGroupRef Id="DesktopShortcut" />
+    </Feature>
+
+    <Property Id="INSTALLDESKTOPSHORTCUT" Value="1" Secure="yes" />
+
+    <!-- Offer to launch from the finish page -->
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch TrackForge" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <Property Id="WixShellExecTarget" Value="[#TrackForgeExe]" />
+
+    <CustomAction Id="LaunchApplication"
+                  DllEntry="WixShellExec"
+                  BinaryRef="Wix4UtilCA_X64"
+                  Impersonate="yes"
+                  Return="ignore" />
+
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+
+    <UI>
+      <Publish Dialog="ExitDialog"
+               Control="Finish"
+               Event="DoAction"
+               Value="LaunchApplication"
+               Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
+    </UI>
+
+    <WixVariable Id="WixUILicenseRtf" Value="$(ProjectRoot)\installer\License.rtf" />
+
+  </Package>
+</Wix>

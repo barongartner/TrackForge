@@ -17,7 +17,8 @@ public sealed class LibraryPage : Panel
     private readonly FlatButton _find = new();
     private readonly FlatButton _edit = new();
     private readonly FlatButton _reveal = new();
-    private readonly List<FlatButton> _filterChips = new();
+    private readonly List<FlatButton> _chips = new();
+    private readonly List<FlatButton> _actions = new();
 
     private List<Track> _all = new();
     private List<Track> _shown = new();
@@ -31,108 +32,104 @@ public sealed class LibraryPage : Panel
     {
         _forge = forge;
         BackColor = Theme.Background;
-        Padding = new Padding(18, 16, 18, 16);
+        Padding = new Padding(Theme.Pad);
 
-        var toolbar = BuildToolbar();
-        var actions = BuildActionBar();
+        var bar = BuildBar();
         BuildList();
 
         Controls.Add(_list);
-        Controls.Add(actions);
-        Controls.Add(toolbar);
+        Controls.Add(bar);
     }
 
-    // ------------------------------------------------------------ chrome
-
-    private Control BuildToolbar()
+    /// <summary>Search, filters, counts and bulk actions in a single 66px strip.</summary>
+    private Control BuildBar()
     {
-        var bar = new CardPanel { Dock = DockStyle.Top, Height = 92, Padding = new Padding(14) };
+        var bar = new CardPanel { Dock = DockStyle.Top, Height = 66 };
 
-        _search.Location = new Point(14, 14);
-        _search.Size = new Size(360, 30);
-        _search.PlaceholderText = "Search title, artist, album, genre...";
+        _search.Location = new Point(Theme.Pad, 8);
+        _search.Size = new Size(230, 24);
+        _search.PlaceholderText = "Search";
         _search.Inner.TextChanged += (_, _) => ApplyFilter();
 
-        _count.Location = new Point(388, 20);
-        _count.Size = new Size(260, 18);
-        _count.ForeColor = Theme.TextDim;
-
-        _rescan.Text = "Rescan";
-        _rescan.Size = new Size(90, 30);
-        _rescan.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        _rescan.Click += async (_, _) => await RescanAsync();
-
-        var chipNames = new (string key, string label)[]
+        var chipDefs = new (string key, string label)[]
         {
             ("all", "All"), ("art", "No art"), ("year", "No year"), ("genre", "No genre"),
             ("album", "No album"), ("bpm", "No BPM"), ("incomplete", "Incomplete"),
         };
 
-        int x = 14;
-        foreach (var (key, label) in chipNames)
+        int x = _search.Right + Theme.Gap * 2;
+        foreach (var (key, label) in chipDefs)
         {
             var chip = new FlatButton
             {
                 Text = label,
-                Size = new Size(TextRenderer.MeasureText(label, Theme.UI).Width + 26, 26),
-                Location = new Point(x, 52),
+                Font = Theme.Small,
+                Size = new Size(TextRenderer.MeasureText(label, Theme.Small).Width + 16, 24),
+                Location = new Point(x, 8),
                 Primary = key == "all",
-                Tag = key,
             };
             chip.Click += (_, _) =>
             {
                 _filter = key;
-                foreach (var c in _filterChips) { c.Primary = ReferenceEquals(c, chip); c.Invalidate(); }
+                foreach (var c in _chips) { c.Primary = ReferenceEquals(c, chip); c.Invalidate(); }
                 ApplyFilter();
             };
-            _filterChips.Add(chip);
+            _chips.Add(chip);
             bar.Controls.Add(chip);
-            x += chip.Width + 6;
+            x += chip.Width + 4;
         }
 
-        bar.Controls.AddRange(new Control[] { _search, _count, _rescan });
-        bar.Resize += (_, _) => _rescan.Location = new Point(bar.Width - _rescan.Width - 14, 14);
-        return bar;
-    }
+        _count.Location = new Point(x + 8, 12);
+        _count.Size = new Size(220, 16);
+        _count.Font = Theme.Small;
+        _count.ForeColor = Theme.TextFaint;
+        _count.AutoEllipsis = true;
 
-    private Control BuildActionBar()
-    {
-        var bar = new Panel { Dock = DockStyle.Top, Height = 50, BackColor = Theme.Background };
+        _rescan.Text = "Rescan";
+        _rescan.Size = new Size(66, 24);
+        _rescan.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        _rescan.Click += async (_, _) => await RescanAsync();
 
-        _status.Location = new Point(2, 16);
-        _status.Size = new Size(420, 18);
+        _status.Location = new Point(Theme.Pad, 40);
+        _status.Size = new Size(300, 16);
+        _status.Font = Theme.Small;
         _status.ForeColor = Theme.TextDim;
         _status.AutoEllipsis = true;
 
-        var buttons = new (FlatButton button, string text, int width, bool primary, Action click)[]
+        var actionDefs = new (FlatButton b, string text, int w, bool primary, Action click)[]
         {
-            (_enrich,  "Fill tags from online", 156, true,  RunEnrich),
-            (_analyze, "Analyse BPM + key",     144, false, RunAnalyze),
-            (_find,    "Find on YouTube",       130, false, RunFind),
-            (_edit,    "Edit tags",              94, false, OpenEditor),
-            (_reveal,  "Show in folder",        116, false, RevealSelected),
+            (_enrich,  "Fill tags online", 104, true,  RunEnrich),
+            (_analyze, "BPM + key",         76, false, RunAnalyze),
+            (_find,    "Find on YouTube",   98, false, RunFind),
+            (_edit,    "Edit",              48, false, OpenEditor),
+            (_reveal,  "Show file",         66, false, RevealSelected),
         };
 
-        foreach (var (button, text, width, primary, click) in buttons)
+        foreach (var (b, text, w, primary, click) in actionDefs)
         {
-            button.Text = text;
-            button.Size = new Size(width, 30);
-            button.Primary = primary;
-            button.Enabled = false;
-            button.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            button.Click += (_, _) => click();
-            bar.Controls.Add(button);
+            b.Text = text;
+            b.Font = Theme.Small;
+            b.Size = new Size(w, 24);
+            b.Primary = primary;
+            b.Enabled = false;
+            b.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            b.Click += (_, _) => click();
+            _actions.Add(b);
+            bar.Controls.Add(b);
         }
 
-        bar.Controls.Add(_status);
+        bar.Controls.AddRange(new Control[] { _search, _count, _rescan, _status });
         bar.Resize += (_, _) =>
         {
-            int right = bar.Width;
-            foreach (var (button, _, _, _, _) in buttons.Reverse())
+            _rescan.Location = new Point(bar.Width - _rescan.Width - Theme.Pad, 8);
+            int right = bar.Width - Theme.Pad;
+            for (int i = _actions.Count - 1; i >= 0; i--)
             {
-                right -= button.Width + 8;
-                button.Location = new Point(right, 10);
+                right -= _actions[i].Width;
+                _actions[i].Location = new Point(right, 38);
+                right -= Theme.Gap;
             }
+            _count.Width = Math.Max(60, _rescan.Left - _count.Left - Theme.Gap);
         };
         return bar;
     }
@@ -140,14 +137,12 @@ public sealed class LibraryPage : Panel
     private void BuildList()
     {
         _list.Dock = DockStyle.Fill;
-        _list.CheckBoxes = false;
-        _list.VirtualMode = false;
 
         var columns = new (string title, int width)[]
         {
-            ("Title", 250), ("Artist", 170), ("Album", 180), ("Year", 52),
-            ("Genre", 100), ("#", 40), ("BPM", 56), ("Key", 50),
-            ("Length", 62), ("Missing", 190),
+            ("Title", 230), ("Artist", 150), ("Album", 160), ("Year", 46),
+            ("Genre", 90), ("#", 34), ("BPM", 48), ("Key", 58),
+            ("Len", 52), ("Missing", 170),
         };
         foreach (var (title, width) in columns) _list.Columns.Add(title, width);
 
@@ -175,25 +170,24 @@ public sealed class LibraryPage : Panel
             : (e.ItemIndex % 2 == 0 ? Theme.Surface : Theme.SurfaceAlt);
         using (var b = new SolidBrush(background)) e.Graphics.FillRectangle(b, e.Bounds);
 
-        if (selected)
+        if (selected && e.ColumnIndex == 0)
             using (var b = new SolidBrush(Theme.Accent))
-                e.Graphics.FillRectangle(b, new Rectangle(e.Bounds.X, e.Bounds.Y,
-                    e.ColumnIndex == 0 ? 2 : 0, e.Bounds.Height));
+                e.Graphics.FillRectangle(b, new Rectangle(e.Bounds.X, e.Bounds.Y, 2, e.Bounds.Height));
 
         var text = e.SubItem?.Text ?? "";
         var colour = Theme.Text;
 
-        if (e.ColumnIndex == 9)                        // Missing
+        if (e.ColumnIndex == 9)
+        {
             colour = text.Length == 0 ? Theme.Good : Theme.Warn;
-        else if (e.ColumnIndex is 3 or 5 or 8)         // Year, #, Length
-            colour = Theme.TextDim;
+            if (text.Length == 0) text = "complete";
+        }
+        else if (e.ColumnIndex is 3 or 5 or 8) colour = Theme.TextDim;
         else if (e.ColumnIndex is 6 or 7 && track is not null
                  && string.IsNullOrWhiteSpace(track.Bpm) && track.DjayBpm.HasValue)
-            colour = Theme.TextFaint;                  // BPM came from djay, not our tags
+            colour = Theme.TextFaint;   // came from djay, not from this file's tags
 
-        if (e.ColumnIndex == 9 && text.Length == 0) text = "complete";
-
-        var bounds = new Rectangle(e.Bounds.X + 6, e.Bounds.Y, e.Bounds.Width - 10, e.Bounds.Height);
+        var bounds = new Rectangle(e.Bounds.X + 5, e.Bounds.Y, e.Bounds.Width - 8, e.Bounds.Height);
         TextRenderer.DrawText(e.Graphics, text, Theme.UI, bounds, colour,
             TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
     }
@@ -205,22 +199,20 @@ public sealed class LibraryPage : Panel
     public async Task RescanAsync()
     {
         _rescan.Enabled = false;
-        _rescan.Text = "Scanning";
-        _status.Text = $"Scanning {_forge.Config.LibraryFolder}...";
+        _rescan.Text = "...";
+        _status.Text = "Scanning " + _forge.Config.LibraryFolder;
         _status.ForeColor = Theme.TextDim;
 
         try
         {
-            var progress = new Progress<string>(s => _status.Text = s);
-            await _forge.RescanLibraryAsync(progress);
+            await _forge.RescanLibraryAsync(new Progress<string>(s => _status.Text = s));
             RefreshFromService();
 
-            if (_all.Count == 0)
-                _status.Text = Directory.Exists(_forge.Config.LibraryFolder)
-                    ? "No audio files in that folder. Check the path in Settings."
-                    : $"Folder not found: {_forge.Config.LibraryFolder}";
-            else
-                _status.Text = $"Scanned {_all.Count} files from {_forge.Config.LibraryFolder}";
+            _status.Text = _all.Count == 0
+                ? (Directory.Exists(_forge.Config.LibraryFolder)
+                    ? "No audio files there. Check the path in Settings."
+                    : "Folder not found: " + _forge.Config.LibraryFolder)
+                : "Scanned " + _forge.Config.LibraryFolder;
         }
         catch (Exception ex)
         {
@@ -244,17 +236,15 @@ public sealed class LibraryPage : Panel
     {
         var query = _search.Text.Trim().ToLowerInvariant();
 
-        IEnumerable<Track> filtered = _all;
-
-        filtered = _filter switch
+        IEnumerable<Track> filtered = _filter switch
         {
-            "art" => filtered.Where(t => !t.HasArt),
-            "year" => filtered.Where(t => string.IsNullOrWhiteSpace(t.Year)),
-            "genre" => filtered.Where(t => string.IsNullOrWhiteSpace(t.Genre)),
-            "album" => filtered.Where(t => string.IsNullOrWhiteSpace(t.Album)),
-            "bpm" => filtered.Where(t => string.IsNullOrWhiteSpace(t.DisplayBpm)),
-            "incomplete" => filtered.Where(t => !t.IsComplete),
-            _ => filtered,
+            "art" => _all.Where(t => !t.HasArt),
+            "year" => _all.Where(t => string.IsNullOrWhiteSpace(t.Year)),
+            "genre" => _all.Where(t => string.IsNullOrWhiteSpace(t.Genre)),
+            "album" => _all.Where(t => string.IsNullOrWhiteSpace(t.Album)),
+            "bpm" => _all.Where(t => string.IsNullOrWhiteSpace(t.DisplayBpm)),
+            "incomplete" => _all.Where(t => !t.IsComplete),
+            _ => _all,
         };
 
         if (query.Length > 0)
@@ -275,7 +265,7 @@ public sealed class LibraryPage : Panel
 
         foreach (var t in _shown)
         {
-            var item = new ListViewItem(new[]
+            _list.Items.Add(new ListViewItem(new[]
             {
                 t.Title.Length > 0 ? t.Title : Path.GetFileNameWithoutExtension(t.Path),
                 t.Artist,
@@ -288,14 +278,13 @@ public sealed class LibraryPage : Panel
                 t.DurationText,
                 t.MissingText,
             })
-            { Tag = t };
-            _list.Items.Add(item);
+            { Tag = t });
         }
 
         _list.EndUpdate();
 
         int incomplete = _all.Count(t => !t.IsComplete);
-        _count.Text = $"{_shown.Count} shown  |  {_all.Count} total  |  {incomplete} need work";
+        _count.Text = $"{_shown.Count} shown / {_all.Count} total / {incomplete} need work";
         UpdateSelectionState();
     }
 
@@ -304,9 +293,8 @@ public sealed class LibraryPage : Panel
         var keys = new[] { "title", "artist", "album", "year", "genre", "track", "bpm", "key", "length", "missing" };
         if (column < 0 || column >= keys.Length) return;
 
-        var key = keys[column];
-        _sortAscending = key == _sortColumn ? !_sortAscending : true;
-        _sortColumn = key;
+        _sortAscending = keys[column] != _sortColumn || !_sortAscending;
+        _sortColumn = keys[column];
         SortShown();
         Render();
     }
@@ -327,33 +315,27 @@ public sealed class LibraryPage : Panel
             _ => t => t.Title ?? "",
         };
 
-        _shown = (_sortAscending
-            ? _shown.OrderBy(selector, Comparer<object>.Create(Compare))
-            : _shown.OrderByDescending(selector, Comparer<object>.Create(Compare))).ToList();
-
-        static int Compare(object? a, object? b) => (a, b) switch
+        var comparer = Comparer<object>.Create(static (a, b) => (a, b) switch
         {
             (string x, string y) => string.Compare(x, y, StringComparison.OrdinalIgnoreCase),
             (IComparable x, _) => x.CompareTo(b),
             _ => 0,
-        };
+        });
+
+        _shown = (_sortAscending
+            ? _shown.OrderBy(selector, comparer)
+            : _shown.OrderByDescending(selector, comparer)).ToList();
     }
 
     private List<Track> Selected() =>
-        _list.SelectedItems.Cast<ListViewItem>()
-            .Select(i => i.Tag).OfType<Track>().ToList();
+        _list.SelectedItems.Cast<ListViewItem>().Select(i => i.Tag).OfType<Track>().ToList();
 
     private void UpdateSelectionState()
     {
         int n = _list.SelectedItems.Count;
-        foreach (var b in new[] { _enrich, _analyze, _find, _reveal })
-        {
-            b.Enabled = n > 0;
-            b.Invalidate();
-        }
+        foreach (var b in new[] { _enrich, _analyze, _find, _reveal }) { b.Enabled = n > 0; b.Invalidate(); }
         _edit.Enabled = n == 1;
         _edit.Invalidate();
-
         if (n > 0) _status.Text = $"{n} selected";
     }
 
@@ -368,7 +350,7 @@ public sealed class LibraryPage : Panel
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
 
         _forge.EnqueueEnrich(tracks, dialog.Options);
-        _status.Text = $"Filling tags on {tracks.Count} track(s) - watch the Jobs panel.";
+        _status.Text = $"Filling tags on {tracks.Count} - see Jobs";
         _status.ForeColor = Theme.TextDim;
     }
 
@@ -376,17 +358,15 @@ public sealed class LibraryPage : Panel
     {
         var tracks = Selected();
         if (tracks.Count == 0) return;
-
         _forge.EnqueueAnalyze(tracks);
-        _status.Text = $"Analysing {tracks.Count} track(s) - watch the Jobs panel.";
+        _status.Text = $"Analysing {tracks.Count} - see Jobs";
         _status.ForeColor = Theme.TextDim;
     }
 
     private void RunFind()
     {
         var tracks = Selected();
-        if (tracks.Count == 0) return;
-        SendToFindRequested?.Invoke(tracks);
+        if (tracks.Count > 0) SendToFindRequested?.Invoke(tracks);
     }
 
     private void OpenEditor()

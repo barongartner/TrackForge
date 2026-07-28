@@ -22,11 +22,19 @@ public static class Theme
     public static readonly Color Bad = Color.FromArgb(198, 84, 84);
     public static readonly Color Selection = Color.FromArgb(38, 46, 56);
 
-    public static readonly Font UI = new("Segoe UI", 9.5f, FontStyle.Regular);
-    public static readonly Font UIBold = new("Segoe UI Semibold", 9.5f, FontStyle.Regular);
-    public static readonly Font Heading = new("Segoe UI Semibold", 13f, FontStyle.Regular);
-    public static readonly Font Small = new("Segoe UI", 8.5f, FontStyle.Regular);
-    public static readonly Font Mono = new("Consolas", 9f, FontStyle.Regular);
+    public static readonly Font UI = new("Segoe UI", 9f, FontStyle.Regular);
+    public static readonly Font UIBold = new("Segoe UI Semibold", 9f, FontStyle.Regular);
+    public static readonly Font Heading = new("Segoe UI Semibold", 12f, FontStyle.Regular);
+    public static readonly Font Small = new("Segoe UI", 8f, FontStyle.Regular);
+    public static readonly Font Mono = new("Consolas", 8.5f, FontStyle.Regular);
+
+    // Compact metrics. Everything laid out in the app refers to these rather than
+    // inventing its own spacing, which is what made the first pass so gappy.
+    public const int Gap = 6;
+    public const int Pad = 10;
+    public const int RowHeight = 26;
+    public const int ButtonHeight = 26;
+    public const int TopBarHeight = 40;
 
     /// <summary>Applies the palette down a control tree.</summary>
     public static void Apply(Control root)

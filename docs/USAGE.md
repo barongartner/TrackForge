@@ -2,15 +2,21 @@
 
 ## First run
 
-TrackForge opens on the **Grab** page and immediately starts scanning your library in
-the background. Check the pill in the top right:
+The first time you open TrackForge it checks for yt-dlp and ffmpeg. If they're not
+there — which on a fresh install they won't be — you get a small setup dialog:
 
-- `yt-dlp 2026.07.04` in green — everything's there.
-- `missing: yt-dlp, ffmpeg` in red — install them, then restart. See
-  [the README](../README.md#requirements).
+> **Two more things needed**
+> TrackForge needs yt-dlp and ffmpeg to download and convert audio. They go in
+> TrackForge's own folder, not your system, and need no admin rights. About 40 MB total.
 
-Go to **Settings** first and point **Library folder** at your music. Everything else
-has a sensible default.
+Hit **Install now** and wait. They land in `%LOCALAPPDATA%\TrackForge\tools`.
+
+After that it opens on the **Grab** page and starts scanning your library. The status
+text in the top right reads `tools ready` in green when everything's in place, or
+`missing yt-dlp + ffmpeg` in red if you skipped setup.
+
+Go to **Settings** and point **Library** at your music folder. Everything else has a
+sensible default.
 
 ---
 
@@ -143,7 +149,8 @@ bar down the left and is usually right.
 | Store the source URL | Writes the link into `WOAS` so you know where it came from |
 | Read BPM from djay | Imports tempo djay already worked out |
 | iTunes store | Affects which releases and genres come back |
-| Cookies from browser | Only for links that need a sign-in |
+| Cookies | Only for links that need a sign-in |
+| Install / update tools | Re-downloads yt-dlp and ffmpeg. Use it when downloads start failing |
 
 ### Filename patterns
 
@@ -176,10 +183,9 @@ want more.
 
 | Symptom | Fix |
 |---|---|
-| `missing: yt-dlp` | `pip install -U yt-dlp`, restart |
-| `missing: ffmpeg` | `winget install Gyan.FFmpeg`, restart |
-| Download fails on every link | yt-dlp is stale: `pip install -U yt-dlp` |
-| One link fails, others work | Age-restricted or private. Set **Cookies from browser** |
+| `missing yt-dlp` or `missing ffmpeg` | **Settings → Install / update tools** |
+| Download fails on every link | yt-dlp has gone stale. **Settings → Install / update tools** pulls the current build |
+| One link fails, others work | Age-restricted or private. Set **Cookies** to your browser in Settings |
 | Library shows 0 files | Wrong path in Settings, or the folder has no audio |
 | No BPM after analysing | ffmpeg can't decode that file. Check the Jobs panel |
 | Lookups return nothing | Check the artist and title fields aren't full of `(Official Video)` |

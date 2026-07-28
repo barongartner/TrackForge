@@ -3,8 +3,8 @@ using TrackForge.Core;
 namespace TrackForge.UI;
 
 /// <summary>
-/// Takes track names - typed in or sent over from the Library - and finds them
-/// on YouTube, so anything missing from disk can go straight into Grab.
+/// Takes track names - typed in or sent over from the Library - and finds them on
+/// YouTube, so anything missing from disk can go straight into Grab.
 /// </summary>
 public sealed class FindPage : Panel
 {
@@ -27,56 +27,57 @@ public sealed class FindPage : Panel
     {
         _forge = forge;
         BackColor = Theme.Background;
-        Padding = new Padding(18, 16, 18, 16);
+        Padding = new Padding(Theme.Pad);
 
-        var intake = new CardPanel { Dock = DockStyle.Top, Height = 172, Padding = new Padding(14) };
+        var intake = new CardPanel { Dock = DockStyle.Top, Height = 100 };
 
-        var caption = new Label
-        {
-            Text = "One search per line. Or select tracks in the Library and send them here.",
-            Location = new Point(16, 12),
-            Size = new Size(700, 18),
-            ForeColor = Theme.TextDim,
-        };
-
-        _queries.Location = new Point(16, 34);
-        _queries.Size = new Size(880, 80);
-        _queries.PlaceholderText = "Artist - Title";
+        _queries.Location = new Point(Theme.Pad, Theme.Pad);
+        _queries.Size = new Size(600, 50);
+        _queries.PlaceholderText = "Artist - Title, one per line. Or send tracks here from Library.";
         _queries.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 
-        _search.Text = "Search YouTube";
-        _search.Primary = true;
-        _search.Size = new Size(140, 32);
-        _search.Location = new Point(16, 124);
-        _search.Click += async (_, _) => await SearchAsync();
+        var buttons = new (FlatButton b, string text, int w, bool primary, Action click)[]
+        {
+            (_search,  "Search",       76, true,  () => _ = SearchAsync()),
+            (_sendAll, "Send best",    82, false, SendBest),
+            (_clear,   "Clear",        58, false, () => { _rows.Clear(); Render(); _note.Text = ""; }),
+        };
 
-        _sendAll.Text = "Send best to Grab";
-        _sendAll.Size = new Size(146, 32);
-        _sendAll.Location = new Point(164, 124);
+        int x = Theme.Pad;
+        foreach (var (b, text, w, primary, click) in buttons)
+        {
+            b.Text = text;
+            b.Size = new Size(w, Theme.ButtonHeight);
+            b.Location = new Point(x, 66);
+            b.Primary = primary;
+            b.Click += (_, _) => click();
+            intake.Controls.Add(b);
+            x += w + Theme.Gap;
+        }
         _sendAll.Enabled = false;
-        _sendAll.Click += (_, _) => SendBest();
 
-        _clear.Text = "Clear";
-        _clear.Size = new Size(80, 32);
-        _clear.Location = new Point(318, 124);
-        _clear.Click += (_, _) => { _rows.Clear(); Render(); _note.Text = ""; };
-
-        _note.Location = new Point(410, 132);
-        _note.Size = new Size(500, 18);
+        _note.Location = new Point(x + 4, 71);
+        _note.Size = new Size(400, 16);
         _note.ForeColor = Theme.TextFaint;
         _note.Font = Theme.Small;
         _note.AutoEllipsis = true;
+        _note.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 
-        intake.Controls.AddRange(new Control[] { caption, _queries, _search, _sendAll, _clear, _note });
-        intake.Resize += (_, _) => _queries.Width = intake.Width - 32;
+        intake.Controls.Add(_queries);
+        intake.Controls.Add(_note);
+        intake.Resize += (_, _) =>
+        {
+            _queries.Width = intake.Width - Theme.Pad * 2;
+            _note.Width = Math.Max(120, intake.Width - _note.Left - Theme.Pad);
+        };
 
         _results.Dock = DockStyle.Fill;
-        _results.Columns.Add("Searched for", 230);
-        _results.Columns.Add("YouTube title", 330);
-        _results.Columns.Add("Channel", 180);
-        _results.Columns.Add("Length", 66);
-        _results.Columns.Add("Views", 90);
-        _results.Columns.Add("Link", 260);
+        _results.Columns.Add("Searched for", 200);
+        _results.Columns.Add("YouTube title", 300);
+        _results.Columns.Add("Channel", 150);
+        _results.Columns.Add("Len", 52);
+        _results.Columns.Add("Views", 78);
+        _results.Columns.Add("Link", 230);
         _results.DrawSubItem += DrawSubItem;
         _results.DoubleClick += (_, _) => SendSelected();
 
@@ -94,10 +95,9 @@ public sealed class FindPage : Panel
     {
         var lines = tracks
             .Select(t => $"{t.Artist} - {t.Title}".Trim(' ', '-'))
-            .Where(s => s.Length > 0)
-            .Distinct();
+            .Where(s => s.Length > 0).Distinct();
         _queries.Text = string.Join(Environment.NewLine, lines);
-        _note.Text = $"{tracks.Count} track(s) loaded from the library.";
+        _note.Text = $"{tracks.Count} loaded from library.";
         _note.ForeColor = Theme.TextFaint;
     }
 
@@ -105,10 +105,7 @@ public sealed class FindPage : Panel
     {
         var queries = _queries.Text
             .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
-            .Select(s => s.Trim())
-            .Where(s => s.Length > 0)
-            .Distinct()
-            .ToList();
+            .Select(s => s.Trim()).Where(s => s.Length > 0).Distinct().ToList();
 
         if (queries.Count == 0)
         {
@@ -118,7 +115,7 @@ public sealed class FindPage : Panel
         }
 
         _search.Enabled = false;
-        _search.Text = "Searching...";
+        _search.Text = "...";
         _rows.Clear();
 
         for (int i = 0; i < queries.Count; i++)
@@ -127,19 +124,17 @@ public sealed class FindPage : Panel
             _note.ForeColor = Theme.TextDim;
 
             var hits = await _forge.Downloader.SearchAsync(queries[i], limit: 3);
-            for (int h = 0; h < hits.Count; h++)
-                _rows.Add(new Row(queries[i], hits[h], h == 0));
-
+            for (int h = 0; h < hits.Count; h++) _rows.Add(new Row(queries[i], hits[h], h == 0));
             Render();
         }
 
         _search.Enabled = true;
-        _search.Text = "Search YouTube";
+        _search.Text = "Search";
         _sendAll.Enabled = _rows.Count > 0;
+        _sendAll.Invalidate();
 
         int found = _rows.Select(r => r.Query).Distinct().Count();
-        _note.Text = $"Found results for {found} of {queries.Count} search(es). " +
-                     "Double-click a row to send it to Grab.";
+        _note.Text = $"Results for {found}/{queries.Count}. Double-click a row to send it to Grab.";
         _note.ForeColor = Theme.TextFaint;
     }
 
@@ -150,7 +145,7 @@ public sealed class FindPage : Panel
 
         foreach (var row in _rows)
         {
-            var item = new ListViewItem(new[]
+            _results.Items.Add(new ListViewItem(new[]
             {
                 row.Best ? row.Query : "",
                 row.Entry.RawTitle,
@@ -159,8 +154,7 @@ public sealed class FindPage : Panel
                 row.Entry.ViewCount > 0 ? row.Entry.ViewCount.ToString("N0") : "",
                 row.Entry.Url,
             })
-            { Tag = row };
-            _results.Items.Add(item);
+            { Tag = row });
         }
 
         _results.EndUpdate();
@@ -187,7 +181,7 @@ public sealed class FindPage : Panel
             _ => row?.Best == true ? Theme.Text : Theme.TextDim,
         };
 
-        var bounds = new Rectangle(e.Bounds.X + 6, e.Bounds.Y, e.Bounds.Width - 10, e.Bounds.Height);
+        var bounds = new Rectangle(e.Bounds.X + 5, e.Bounds.Y, e.Bounds.Width - 8, e.Bounds.Height);
         TextRenderer.DrawText(e.Graphics, e.SubItem?.Text ?? "", Theme.UI, bounds, colour,
             TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
     }
@@ -198,15 +192,13 @@ public sealed class FindPage : Panel
     private void SendSelected()
     {
         var urls = SelectedRows().Select(r => r.Entry.Url).Where(u => u.Length > 0).ToList();
-        if (urls.Count == 0) return;
-        SendToGrabRequested?.Invoke(urls);
+        if (urls.Count > 0) SendToGrabRequested?.Invoke(urls);
     }
 
     private void SendBest()
     {
         var urls = _rows.Where(r => r.Best).Select(r => r.Entry.Url).Where(u => u.Length > 0).ToList();
-        if (urls.Count == 0) return;
-        SendToGrabRequested?.Invoke(urls);
+        if (urls.Count > 0) SendToGrabRequested?.Invoke(urls);
     }
 
     private void CopySelected()

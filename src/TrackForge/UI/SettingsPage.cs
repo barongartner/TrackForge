@@ -2,6 +2,7 @@ using TrackForge.Core;
 
 namespace TrackForge.UI;
 
+/// <summary>Two compact columns rather than one tall sparse one.</summary>
 public sealed class SettingsPage : Panel
 {
     private readonly ForgeService _forge;
@@ -21,121 +22,140 @@ public sealed class SettingsPage : Panel
     private readonly Label _saved = new();
     private readonly Label _tools = new();
     private readonly Label _preview = new();
+    private readonly FlatButton _installTools = new();
+
+    private const int LabelWidth = 96;
+    private const int RowStep = 30;
 
     public SettingsPage(ForgeService forge)
     {
         _forge = forge;
         BackColor = Theme.Background;
-        Padding = new Padding(18, 16, 18, 16);
+        Padding = new Padding(Theme.Pad);
         AutoScroll = true;
 
-        var card = new CardPanel { Dock = DockStyle.Top, Height = 640, Padding = new Padding(20) };
+        var card = new CardPanel { Dock = DockStyle.Top, Height = 430 };
 
-        int y = 18;
-        AddHeading(card, "Paths", ref y);
-        AddPathRow(card, "Library folder", _library, ref y);
-        AddPathRow(card, "Save downloads to", _output, ref y);
+        // ---- left column -------------------------------------------------
+        int left = Theme.Pad + 4;
+        int y = 12;
 
-        y += 10;
-        AddHeading(card, "Audio", ref y);
-        AddCombo(card, "Format", _format, new[] { "mp3", "flac", "opus", "m4a" }, ref y, 120);
-        AddCombo(card, "MP3 bitrate", _bitrate, new[] { "320", "256", "192", "128" }, ref y, 120);
+        Heading(card, "PATHS", left, ref y);
+        PathRow(card, "Library", _library, left, ref y);
+        PathRow(card, "Save to", _output, left, ref y);
 
-        y += 10;
-        AddHeading(card, "Naming", ref y);
-        AddTextRow(card, "Filename pattern", _pattern, ref y, 340);
+        y += 6;
+        Heading(card, "AUDIO", left, ref y);
+        ComboRow(card, "Format", _format, new[] { "mp3", "flac", "opus", "m4a" }, left, ref y, 90);
+        ComboRow(card, "Bitrate", _bitrate, new[] { "320", "256", "192", "128" }, left, ref y, 90);
+
+        y += 6;
+        Heading(card, "NAMING", left, ref y);
+        TextRow(card, "Pattern", _pattern, left, ref y, 250);
         _pattern.Inner.TextChanged += (_, _) => UpdatePreview();
 
-        _preview.Location = new Point(200, y);
-        _preview.Size = new Size(600, 34);
+        _preview.SetBounds(left + LabelWidth, y - 2, 300, 30);
         _preview.Font = Theme.Small;
         _preview.ForeColor = Theme.TextFaint;
         card.Controls.Add(_preview);
-        y += 42;
+        y += 34;
 
-        y += 6;
-        AddHeading(card, "Behaviour", ref y);
-        AddCheck(card, _analyze, "Detect BPM and musical key from the audio on every download", ref y);
-        AddCheck(card, _autoArt, "Pick the best cover art automatically after a lookup", ref y);
-        AddCheck(card, _titleCase, "Force Title Case on title, artist and album", ref y);
-        AddCheck(card, _sourceUrl, "Store the source URL inside the file", ref y);
-        AddCheck(card, _djay, "Read BPM that Algoriddim djay has already analysed", ref y);
+        // ---- right column ------------------------------------------------
+        int right = 410;
+        int ry = 12;
 
-        y += 10;
-        AddCombo(card, "iTunes store", _country, new[] { "CA", "US", "GB", "AU", "DE", "FR", "JP" }, ref y, 90);
-        AddCombo(card, "Cookies from browser", _cookies,
-            new[] { "none", "opera", "chrome", "edge", "firefox", "brave", "vivaldi" }, ref y, 140);
+        Heading(card, "BEHAVIOUR", right, ref ry);
+        Check(card, _analyze, "Detect BPM and key on download", right, ref ry);
+        Check(card, _autoArt, "Pick cover art automatically", right, ref ry);
+        Check(card, _titleCase, "Force Title Case", right, ref ry);
+        Check(card, _sourceUrl, "Store the source URL in the file", right, ref ry);
+        Check(card, _djay, "Read BPM from djay's library", right, ref ry);
 
-        var cookieHint = new Label
+        ry += 8;
+        Heading(card, "LOOKUP", right, ref ry);
+        ComboRow(card, "iTunes store", _country, new[] { "CA", "US", "GB", "AU", "DE", "FR", "JP" },
+                 right, ref ry, 70);
+        ComboRow(card, "Cookies", _cookies,
+                 new[] { "none", "opera", "chrome", "edge", "firefox", "brave", "vivaldi" },
+                 right, ref ry, 100);
+
+        ry += 8;
+        Heading(card, "TOOLS", right, ref ry);
+        _tools.SetBounds(right, ry, 340, 46);
+        _tools.Font = Theme.Mono;
+        _tools.ForeColor = Theme.TextDim;
+        card.Controls.Add(_tools);
+        ry += 50;
+
+        _installTools.Text = "Install / update tools";
+        _installTools.Size = new Size(150, Theme.ButtonHeight);
+        _installTools.Location = new Point(right, ry);
+        _installTools.Click += async (_, _) => await InstallToolsAsync();
+        card.Controls.Add(_installTools);
+
+        // ---- save --------------------------------------------------------
+        int saveY = Math.Max(y, ry + 36) + 4;
+
+        var save = new FlatButton
         {
-            Text = "Only needed if a link asks you to sign in.",
-            Location = new Point(200, y),
-            Size = new Size(500, 18),
-            Font = Theme.Small,
-            ForeColor = Theme.TextFaint,
+            Text = "Save settings",
+            Primary = true,
+            Size = new Size(112, Theme.ButtonHeight),
+            Location = new Point(left, saveY),
         };
-        card.Controls.Add(cookieHint);
-        y += 32;
-
-        var save = new FlatButton { Text = "Save settings", Primary = true, Size = new Size(130, 32), Location = new Point(200, y) };
         save.Click += (_, _) => SaveToConfig();
 
-        _saved.Location = new Point(342, y + 7);
-        _saved.Size = new Size(400, 18);
+        _saved.SetBounds(left + 122, saveY + 5, 460, 16);
+        _saved.Font = Theme.Small;
         _saved.ForeColor = Theme.Good;
 
         card.Controls.Add(save);
         card.Controls.Add(_saved);
-        y += 48;
-
-        AddHeading(card, "Tools", ref y);
-        _tools.Location = new Point(24, y);
-        _tools.Size = new Size(760, 74);
-        _tools.Font = Theme.Mono;
-        _tools.ForeColor = Theme.TextDim;
-        card.Controls.Add(_tools);
+        card.Height = saveY + 44;
 
         Controls.Add(card);
     }
 
     // ---------------------------------------------------------- layout
 
-    private static void AddHeading(Control parent, string text, ref int y)
+    private static void Heading(Control parent, string text, int x, ref int y)
     {
-        var label = new Label
+        parent.Controls.Add(new Label
         {
-            Text = text.ToUpperInvariant(),
-            Location = new Point(24, y),
-            Size = new Size(300, 18),
+            Text = text,
+            Location = new Point(x, y),
+            Size = new Size(260, 15),
             Font = Theme.Small,
             ForeColor = Theme.Accent,
-        };
-        parent.Controls.Add(label);
-        y += 26;
+        });
+        y += 20;
     }
 
-    private static void AddTextRow(Control parent, string caption, FlatTextBox box, ref int y, int width)
+    private static void TextRow(Control parent, string caption, FlatTextBox box,
+                                int x, ref int y, int width)
     {
-        var label = new Label
+        parent.Controls.Add(new Label
         {
             Text = caption,
-            Location = new Point(24, y + 6),
-            Size = new Size(170, 18),
+            Location = new Point(x, y + 4),
+            Size = new Size(LabelWidth - 6, 16),
             ForeColor = Theme.TextDim,
-        };
-        box.Location = new Point(200, y);
-        box.Size = new Size(width, 30);
-
-        parent.Controls.Add(label);
+        });
+        box.SetBounds(x + LabelWidth, y, width, 24);
         parent.Controls.Add(box);
-        y += 40;
+        y += RowStep;
     }
 
-    private void AddPathRow(Control parent, string caption, FlatTextBox box, ref int y)
+    private void PathRow(Control parent, string caption, FlatTextBox box, int x, ref int y)
     {
-        AddTextRow(parent, caption, box, ref y, 440);
+        TextRow(parent, caption, box, x, ref y, 190);
 
-        var browse = new FlatButton { Text = "Browse", Size = new Size(84, 30), Location = new Point(648, y - 40) };
+        var browse = new FlatButton
+        {
+            Text = "...",
+            Size = new Size(28, 24),
+            Location = new Point(x + LabelWidth + 196, y - RowStep),
+        };
         browse.Click += (_, _) =>
         {
             using var dialog = new FolderBrowserDialog { SelectedPath = box.Text };
@@ -144,38 +164,35 @@ public sealed class SettingsPage : Panel
         parent.Controls.Add(browse);
     }
 
-    private static void AddCombo(Control parent, string caption, ComboBox combo,
-                                 string[] items, ref int y, int width)
+    private static void ComboRow(Control parent, string caption, ComboBox combo,
+                                 string[] items, int x, ref int y, int width)
     {
-        var label = new Label
+        parent.Controls.Add(new Label
         {
             Text = caption,
-            Location = new Point(24, y + 4),
-            Size = new Size(170, 18),
+            Location = new Point(x, y + 3),
+            Size = new Size(LabelWidth - 6, 16),
             ForeColor = Theme.TextDim,
-        };
-        combo.Location = new Point(200, y);
-        combo.Size = new Size(width, 26);
+        });
+        combo.SetBounds(x + LabelWidth, y, width, 22);
         combo.DropDownStyle = ComboBoxStyle.DropDownList;
         combo.FlatStyle = FlatStyle.Flat;
         combo.BackColor = Theme.SurfaceAlt;
         combo.ForeColor = Theme.Text;
         combo.Items.AddRange(items);
-
-        parent.Controls.Add(label);
         parent.Controls.Add(combo);
-        y += 36;
+        y += 28;
     }
 
-    private static void AddCheck(Control parent, CheckBox box, string text, ref int y)
+    private static void Check(Control parent, CheckBox box, string text, int x, ref int y)
     {
         box.Text = text;
-        box.Location = new Point(200, y);
-        box.Size = new Size(560, 22);
+        box.Location = new Point(x, y);
+        box.Size = new Size(330, 20);
         box.ForeColor = Theme.Text;
         box.FlatStyle = FlatStyle.Flat;
         parent.Controls.Add(box);
-        y += 28;
+        y += 24;
     }
 
     // ------------------------------------------------------------- data
@@ -216,7 +233,7 @@ public sealed class SettingsPage : Panel
         c.ImportDjayData = _djay.Checked;
 
         _forge.SaveConfig();
-        _saved.Text = "Saved to " + AppConfig.ConfigPath;
+        _saved.Text = "Saved. Rescan the library if you changed the folder.";
     }
 
     private void UpdatePreview()
@@ -233,22 +250,29 @@ public sealed class SettingsPage : Panel
 
         try
         {
-            var name = NameFormatter.BuildFileName(sample, _pattern.Text, ".mp3");
-            _preview.Text = $"Tokens: {{track}} {{tracknum}} {{title}} {{artist}} {{albumartist}} {{album}} {{year}}\n" +
-                            $"Preview: {name}";
+            _preview.Text = "{track} {tracknum} {title} {artist} {albumartist} {album} {year}\r\n"
+                          + NameFormatter.BuildFileName(sample, _pattern.Text, ".mp3");
         }
-        catch
-        {
-            _preview.Text = "That pattern is not valid.";
-        }
+        catch { _preview.Text = "That pattern is not valid."; }
     }
 
     public void ShowToolStatus(string? ytDlp, string? ffmpeg)
     {
-        _tools.Text =
-            $"yt-dlp   {(ytDlp is null ? "NOT FOUND   ->  pip install -U yt-dlp" : ytDlp)}\n" +
-            $"ffmpeg   {(ffmpeg is null ? "NOT FOUND   ->  winget install Gyan.FFmpeg" : ffmpeg)}\n" +
-            $"config   {AppConfig.ConfigPath}";
+        _tools.Text = $"yt-dlp  {ytDlp ?? "not found"}\r\n" +
+                      $"ffmpeg  {(ffmpeg is null ? "not found" : "ok")}\r\n" +
+                      $"folder  {ToolInstaller.ToolsDirectory}";
         _tools.ForeColor = ytDlp is null || ffmpeg is null ? Theme.Bad : Theme.TextDim;
+        _installTools.Primary = ytDlp is null || ffmpeg is null;
+        _installTools.Invalidate();
+    }
+
+    private async Task InstallToolsAsync()
+    {
+        var missing = new List<string> { "yt-dlp", "ffmpeg" };
+        using var dialog = new ToolSetupDialog(_forge, missing);
+        dialog.ShowDialog(this);
+
+        if (dialog.InstalledSomething && FindForm() is MainForm main)
+            await main.RefreshToolStatusAsync();
     }
 }

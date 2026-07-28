@@ -14,6 +14,7 @@ public sealed class GrabPage : Panel
     private readonly FlatButton _clear = new();
     private readonly Label _note = new();
     private readonly FlowLayoutPanel _cards = new();
+    private readonly Label _empty = new();
 
     private bool _toolsReady = true;
 
@@ -21,84 +22,85 @@ public sealed class GrabPage : Panel
     {
         _forge = forge;
         BackColor = Theme.Background;
-        Padding = new Padding(18, 16, 18, 16);
+        Padding = new Padding(Theme.Pad);
 
-        var intake = new CardPanel { Dock = DockStyle.Top, Height = 176, Padding = new Padding(16) };
+        var intake = new CardPanel { Dock = DockStyle.Top, Height = 108 };
 
-        var caption = new Label
-        {
-            Text = "YouTube links, one per line. Playlists expand into every track.",
-            Location = new Point(16, 12),
-            Size = new Size(700, 18),
-            ForeColor = Theme.TextDim,
-        };
-
-        _urlBox.Location = new Point(16, 34);
-        _urlBox.Size = new Size(900, 84);
+        _urlBox.Location = new Point(Theme.Pad, Theme.Pad);
+        _urlBox.Size = new Size(600, 58);
         _urlBox.Inner.WordWrap = false;
         _urlBox.Inner.ScrollBars = ScrollBars.Both;
-        _urlBox.PlaceholderText = "https://www.youtube.com/watch?v=...";
+        _urlBox.PlaceholderText = "Paste YouTube links, one per line. Playlists expand.";
         _urlBox.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 
-        _fetch.Text = "Fetch metadata";
-        _fetch.Primary = true;
-        _fetch.Size = new Size(140, 32);
-        _fetch.Location = new Point(16, 128);
-        _fetch.Click += async (_, _) => await FetchAsync();
+        var buttons = new (FlatButton b, string text, int w, bool primary, Action click)[]
+        {
+            (_fetch,     "Fetch",       78, true,  () => _ = FetchAsync()),
+            (_lookupAll, "Look up all", 88, false, () => _ = LookupAllAsync()),
+            (_grabAll,   "Grab all",    76, false, GrabAll),
+            (_clear,     "Clear",       58, false, ClearCards),
+        };
 
-        _lookupAll.Text = "Look up all";
-        _lookupAll.Size = new Size(110, 32);
-        _lookupAll.Location = new Point(164, 128);
-        _lookupAll.Enabled = false;
-        _lookupAll.Click += async (_, _) => await LookupAllAsync();
+        int x = Theme.Pad;
+        foreach (var (b, text, w, primary, click) in buttons)
+        {
+            b.Text = text;
+            b.Size = new Size(w, Theme.ButtonHeight);
+            b.Location = new Point(x, 74);
+            b.Primary = primary;
+            b.Click += (_, _) => click();
+            if (b != _fetch) b.Enabled = false;
+            intake.Controls.Add(b);
+            x += w + Theme.Gap;
+        }
 
-        _grabAll.Text = "Grab all";
-        _grabAll.Size = new Size(96, 32);
-        _grabAll.Location = new Point(282, 128);
-        _grabAll.Enabled = false;
-        _grabAll.Click += (_, _) => GrabAll();
-
-        _clear.Text = "Clear";
-        _clear.Size = new Size(80, 32);
-        _clear.Location = new Point(386, 128);
-        _clear.Enabled = false;
-        _clear.Click += (_, _) => ClearCards();
-
-        _note.Location = new Point(478, 136);
-        _note.Size = new Size(500, 18);
+        _note.Location = new Point(x + 4, 79);
+        _note.Size = new Size(420, 16);
         _note.ForeColor = Theme.TextFaint;
         _note.Font = Theme.Small;
         _note.AutoEllipsis = true;
+        _note.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 
-        intake.Controls.AddRange(new Control[]
-            { caption, _urlBox, _fetch, _lookupAll, _grabAll, _clear, _note });
-        intake.Resize += (_, _) => _urlBox.Width = intake.Width - 32;
+        intake.Controls.Add(_urlBox);
+        intake.Controls.Add(_note);
+        intake.Resize += (_, _) =>
+        {
+            _urlBox.Width = intake.Width - Theme.Pad * 2;
+            _note.Width = Math.Max(120, intake.Width - _note.Left - Theme.Pad);
+        };
 
         _cards.Dock = DockStyle.Fill;
         _cards.FlowDirection = FlowDirection.TopDown;
         _cards.WrapContents = false;
         _cards.AutoScroll = true;
         _cards.BackColor = Theme.Background;
-        _cards.Padding = new Padding(0, 12, 0, 0);
+        _cards.Padding = new Padding(0, Theme.Gap, 0, 0);
         _cards.Resize += (_, _) => ResizeCards();
 
+        _empty.Text = "Nothing queued.\r\n\r\nPaste a link above and hit Fetch.";
+        _empty.Dock = DockStyle.Fill;
+        _empty.TextAlign = ContentAlignment.MiddleCenter;
+        _empty.ForeColor = Theme.TextFaint;
+        _empty.BackColor = Theme.Background;
+
+        Controls.Add(_empty);
         Controls.Add(_cards);
         Controls.Add(intake);
 
-        _urlBox.Inner.KeyDown += async (_, e) =>
+        _urlBox.Inner.KeyDown += (_, e) =>
         {
-            if (e.Control && e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; await FetchAsync(); }
+            if (e.Control && e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; _ = FetchAsync(); }
         };
+
+        UpdateButtons();
     }
 
     public void SetToolsReady(bool ready)
     {
         _toolsReady = ready;
-        if (!ready)
-        {
-            _note.Text = "yt-dlp or ffmpeg is missing. See Settings for how to install them.";
-            _note.ForeColor = Theme.Bad;
-        }
+        if (ready) return;
+        _note.Text = "yt-dlp or ffmpeg missing - open Settings to install them.";
+        _note.ForeColor = Theme.Bad;
     }
 
     public void AddUrls(IEnumerable<string> urls)
@@ -120,19 +122,14 @@ public sealed class GrabPage : Panel
         if (!_toolsReady)
         {
             MessageBox.Show(this,
-                "yt-dlp and ffmpeg both need to be on your PATH.\n\n" +
-                "Install yt-dlp:   pip install -U yt-dlp\n" +
-                "Install ffmpeg:  winget install Gyan.FFmpeg",
+                "yt-dlp and ffmpeg are both needed.\n\nOpen Settings and use Install tools.",
                 "Missing tools", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
         var urls = _urlBox.Text
             .Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
-            .Select(s => s.Trim())
-            .Where(s => s.Length > 0)
-            .Distinct()
-            .ToList();
+            .Select(s => s.Trim()).Where(s => s.Length > 0).Distinct().ToList();
 
         if (urls.Count == 0)
         {
@@ -142,18 +139,18 @@ public sealed class GrabPage : Panel
         }
 
         _fetch.Enabled = false;
-        _fetch.Text = "Fetching...";
+        _fetch.Text = "...";
         _note.ForeColor = Theme.TextDim;
 
         int added = 0, failed = 0;
         foreach (var url in urls)
         {
-            _note.Text = $"Reading {url}";
+            _note.Text = "Reading " + url;
             try
             {
                 var (entries, playlist) = await _forge.Downloader.ProbeAsync(url);
                 foreach (var entry in entries) { AddCard(entry); added++; }
-                if (playlist is not null) _note.Text = $"Playlist: {playlist} ({entries.Count} tracks)";
+                if (playlist is not null) _note.Text = $"Playlist: {playlist} ({entries.Count})";
             }
             catch (Exception ex)
             {
@@ -164,11 +161,11 @@ public sealed class GrabPage : Panel
         }
 
         _fetch.Enabled = true;
-        _fetch.Text = "Fetch metadata";
+        _fetch.Text = "Fetch";
 
         if (failed == 0)
         {
-            _note.Text = $"{added} track(s) ready. Look them up, check the tags, then grab.";
+            _note.Text = $"{added} queued. Look them up, check the tags, then grab.";
             _note.ForeColor = Theme.TextFaint;
             _urlBox.Text = "";
         }
@@ -178,10 +175,7 @@ public sealed class GrabPage : Panel
 
     private void AddCard(VideoEntry entry)
     {
-        var card = new GrabCard(_forge, entry)
-        {
-            Width = Math.Max(880, _cards.ClientSize.Width - 24),
-        };
+        var card = new GrabCard(_forge, entry) { Width = CardWidth() };
         card.RemoveRequested += c =>
         {
             _cards.Controls.Remove(c);
@@ -191,16 +185,18 @@ public sealed class GrabPage : Panel
         _cards.Controls.Add(card);
     }
 
+    private int CardWidth() => Math.Max(640, _cards.ClientSize.Width - Theme.Pad);
+
     private void ResizeCards()
     {
-        foreach (Control c in _cards.Controls)
-            c.Width = Math.Max(880, _cards.ClientSize.Width - 24);
+        int w = CardWidth();
+        foreach (Control c in _cards.Controls) c.Width = w;
     }
 
     private async Task LookupAllAsync()
     {
         _lookupAll.Enabled = false;
-        _lookupAll.Text = "Looking up...";
+        _lookupAll.Text = "...";
         foreach (var card in _cards.Controls.OfType<GrabCard>().ToList())
             await card.LookupAsync();
         _lookupAll.Text = "Look up all";
@@ -226,8 +222,8 @@ public sealed class GrabPage : Panel
     private void UpdateButtons()
     {
         bool any = _cards.Controls.Count > 0;
-        _grabAll.Enabled = any;
-        _lookupAll.Enabled = any;
-        _clear.Enabled = any;
+        foreach (var b in new[] { _grabAll, _lookupAll, _clear }) { b.Enabled = any; b.Invalidate(); }
+        _cards.Visible = any;
+        _empty.Visible = !any;
     }
 }
