@@ -2,14 +2,14 @@ using TrackForge.Core;
 
 namespace TrackForge.UI;
 
-/// <summary>Two compact columns rather than one tall sparse one.</summary>
+/// <summary>One card, two columns, accent eyebrows marking each section.</summary>
 public sealed class SettingsPage : Panel
 {
     private readonly ForgeService _forge;
 
-    private readonly FlatTextBox _library = new();
-    private readonly FlatTextBox _output = new();
-    private readonly FlatTextBox _pattern = new();
+    private readonly FlatTextBox _library = new(monospace: true);
+    private readonly FlatTextBox _output = new(monospace: true);
+    private readonly FlatTextBox _pattern = new(monospace: true);
     private readonly ComboBox _format = new();
     private readonly ComboBox _bitrate = new();
     private readonly ComboBox _cookies = new();
@@ -20,12 +20,15 @@ public sealed class SettingsPage : Panel
     private readonly CheckBox _sourceUrl = new();
     private readonly CheckBox _djay = new();
     private readonly Label _saved = new();
-    private readonly Label _tools = new();
+    private readonly Label _tokens = new();
     private readonly Label _preview = new();
+    private readonly Label _tools = new();
+    private readonly Panel _toolBlock = new();
     private readonly FlatButton _installTools = new();
 
-    private const int LabelWidth = 96;
+    private const int LabelWidth = 82;
     private const int RowStep = 30;
+    private const int SectionGap = 16;
 
     public SettingsPage(ForgeService forge)
     {
@@ -34,100 +37,112 @@ public sealed class SettingsPage : Panel
         Padding = new Padding(Theme.Pad);
         AutoScroll = true;
 
-        var card = new CardPanel { Dock = DockStyle.Top, Height = 430 };
+        var card = new CardPanel { Dock = DockStyle.Top, Height = 460 };
+
+        int left = 14;
+        int right = 430;
+        int y = 14;
+        int ry = 14;
 
         // ---- left column -------------------------------------------------
-        int left = Theme.Pad + 4;
-        int y = 12;
-
-        Heading(card, "PATHS", left, ref y);
+        Eyebrow(card, "Paths", left, ref y);
         PathRow(card, "Library", _library, left, ref y);
         PathRow(card, "Save to", _output, left, ref y);
 
-        y += 6;
-        Heading(card, "AUDIO", left, ref y);
-        ComboRow(card, "Format", _format, new[] { "mp3", "flac", "opus", "m4a" }, left, ref y, 90);
-        ComboRow(card, "Bitrate", _bitrate, new[] { "320", "256", "192", "128" }, left, ref y, 90);
+        y += SectionGap;
+        Eyebrow(card, "Audio", left, ref y);
+        ComboRow(card, "Format", _format, new[] { "mp3", "flac", "opus", "m4a" }, left, ref y, 92);
+        ComboRow(card, "Bitrate", _bitrate, new[] { "320", "256", "192", "128" }, left, ref y, 92);
 
-        y += 6;
-        Heading(card, "NAMING", left, ref y);
-        TextRow(card, "Pattern", _pattern, left, ref y, 250);
+        y += SectionGap;
+        Eyebrow(card, "Naming", left, ref y);
+        TextRow(card, "Pattern", _pattern, left, ref y, 240);
         _pattern.Inner.TextChanged += (_, _) => UpdatePreview();
 
-        _preview.SetBounds(left + LabelWidth, y - 2, 300, 30);
-        _preview.Font = Theme.Small;
-        _preview.ForeColor = Theme.TextFaint;
+        _tokens.SetBounds(left + LabelWidth, y - 2, 320, 14);
+        _tokens.Font = Theme.NumericSmall;
+        _tokens.ForeColor = Theme.TextFaint;
+        card.Controls.Add(_tokens);
+
+        _preview.SetBounds(left + LabelWidth, y + 13, 320, 14);
+        _preview.Font = Theme.NumericSmall;
+        _preview.ForeColor = Theme.TextDim;
         card.Controls.Add(_preview);
         y += 34;
 
-        // ---- right column ------------------------------------------------
-        int right = 410;
-        int ry = 12;
+        var save = new FlatButton
+        {
+            Text = "Save settings",
+            Primary = true,
+            Size = new Size(102, Theme.PrimaryButtonHeight),
+            Location = new Point(left, y),
+        };
+        save.Click += (_, _) => SaveToConfig();
+        card.Controls.Add(save);
 
-        Heading(card, "BEHAVIOUR", right, ref ry);
+        _saved.SetBounds(left + 110, y + 5, 300, 16);
+        _saved.Font = Theme.Secondary;
+        _saved.ForeColor = Theme.Good;
+        card.Controls.Add(_saved);
+        y += 36;
+
+        // ---- right column ------------------------------------------------
+        Eyebrow(card, "Behaviour", right, ref ry);
         Check(card, _analyze, "Detect BPM and key on download", right, ref ry);
         Check(card, _autoArt, "Pick cover art automatically", right, ref ry);
         Check(card, _titleCase, "Force Title Case", right, ref ry);
         Check(card, _sourceUrl, "Store the source URL in the file", right, ref ry);
         Check(card, _djay, "Read BPM from djay's library", right, ref ry);
 
-        ry += 8;
-        Heading(card, "LOOKUP", right, ref ry);
+        ry += SectionGap;
+        Eyebrow(card, "Lookup", right, ref ry);
         ComboRow(card, "iTunes store", _country, new[] { "CA", "US", "GB", "AU", "DE", "FR", "JP" },
-                 right, ref ry, 70);
+                 right, ref ry, 72);
         ComboRow(card, "Cookies", _cookies,
                  new[] { "none", "opera", "chrome", "edge", "firefox", "brave", "vivaldi" },
-                 right, ref ry, 100);
+                 right, ref ry, 92);
 
-        ry += 8;
-        Heading(card, "TOOLS", right, ref ry);
-        _tools.SetBounds(right, ry, 340, 46);
-        _tools.Font = Theme.Mono;
+        ry += SectionGap;
+        Eyebrow(card, "Tools", right, ref ry);
+
+        _toolBlock.SetBounds(right, ry, 330, 54);
+        _toolBlock.BackColor = Theme.ChromePanel;
+        _toolBlock.Paint += (_, e) =>
+        {
+            using var p = new Pen(Theme.ChromeBorder);
+            e.Graphics.DrawRectangle(p, 0, 0, _toolBlock.Width - 1, _toolBlock.Height - 1);
+        };
+
+        _tools.SetBounds(8, 6, 314, 42);
+        _tools.Font = Theme.NumericSmall;
         _tools.ForeColor = Theme.TextDim;
-        card.Controls.Add(_tools);
-        ry += 50;
+        _toolBlock.Controls.Add(_tools);
+        card.Controls.Add(_toolBlock);
+        ry += 60;
 
         _installTools.Text = "Install / update tools";
-        _installTools.Size = new Size(150, Theme.ButtonHeight);
+        _installTools.Size = new Size(140, Theme.ButtonHeight);
         _installTools.Location = new Point(right, ry);
         _installTools.Click += async (_, _) => await InstallToolsAsync();
         card.Controls.Add(_installTools);
+        ry += 34;
 
-        // ---- save --------------------------------------------------------
-        int saveY = Math.Max(y, ry + 36) + 4;
-
-        var save = new FlatButton
-        {
-            Text = "Save settings",
-            Primary = true,
-            Size = new Size(112, Theme.ButtonHeight),
-            Location = new Point(left, saveY),
-        };
-        save.Click += (_, _) => SaveToConfig();
-
-        _saved.SetBounds(left + 122, saveY + 5, 460, 16);
-        _saved.Font = Theme.Small;
-        _saved.ForeColor = Theme.Good;
-
-        card.Controls.Add(save);
-        card.Controls.Add(_saved);
-        card.Height = saveY + 44;
-
+        card.Height = Math.Max(y, ry) + 14;
         Controls.Add(card);
     }
 
     // ---------------------------------------------------------- layout
 
-    private static void Heading(Control parent, string text, int x, ref int y)
+    private static void Eyebrow(Control parent, string text, int x, ref int y)
     {
-        parent.Controls.Add(new Label
+        var label = new Label
         {
-            Text = text,
             Location = new Point(x, y),
-            Size = new Size(260, 15),
-            Font = Theme.Small,
-            ForeColor = Theme.Accent,
-        });
+            Size = new Size(260, 14),
+            BackColor = Color.Transparent,
+        };
+        label.Paint += (_, e) => Theme.DrawEyebrow(e.Graphics, text, label.ClientRectangle);
+        parent.Controls.Add(label);
         y += 20;
     }
 
@@ -139,22 +154,23 @@ public sealed class SettingsPage : Panel
             Text = caption,
             Location = new Point(x, y + 4),
             Size = new Size(LabelWidth - 6, 16),
+            Font = Theme.Body,
             ForeColor = Theme.TextDim,
         });
-        box.SetBounds(x + LabelWidth, y, width, 24);
+        box.SetBounds(x + LabelWidth, y, width, Theme.FieldHeight);
         parent.Controls.Add(box);
         y += RowStep;
     }
 
     private void PathRow(Control parent, string caption, FlatTextBox box, int x, ref int y)
     {
-        TextRow(parent, caption, box, x, ref y, 190);
+        TextRow(parent, caption, box, x, ref y, 210);
 
         var browse = new FlatButton
         {
-            Text = "...",
-            Size = new Size(28, 24),
-            Location = new Point(x + LabelWidth + 196, y - RowStep),
+            Text = "…",
+            Size = new Size(Theme.FieldHeight, Theme.FieldHeight),
+            Location = new Point(x + LabelWidth + 216, y - RowStep),
         };
         browse.Click += (_, _) =>
         {
@@ -172,6 +188,7 @@ public sealed class SettingsPage : Panel
             Text = caption,
             Location = new Point(x, y + 3),
             Size = new Size(LabelWidth - 6, 16),
+            Font = Theme.Body,
             ForeColor = Theme.TextDim,
         });
         combo.SetBounds(x + LabelWidth, y, width, 22);
@@ -179,6 +196,7 @@ public sealed class SettingsPage : Panel
         combo.FlatStyle = FlatStyle.Flat;
         combo.BackColor = Theme.SurfaceAlt;
         combo.ForeColor = Theme.Text;
+        combo.Font = Theme.Body;
         combo.Items.AddRange(items);
         parent.Controls.Add(combo);
         y += 28;
@@ -188,7 +206,8 @@ public sealed class SettingsPage : Panel
     {
         box.Text = text;
         box.Location = new Point(x, y);
-        box.Size = new Size(330, 20);
+        box.Size = new Size(320, 20);
+        box.Font = Theme.Body;
         box.ForeColor = Theme.Text;
         box.FlatStyle = FlatStyle.Flat;
         parent.Controls.Add(box);
@@ -236,8 +255,11 @@ public sealed class SettingsPage : Panel
         _saved.Text = "Saved. Rescan the library if you changed the folder.";
     }
 
+    /// <summary>Live preview computed through the real NameFormatter token rules.</summary>
     private void UpdatePreview()
     {
+        _tokens.Text = "{track} {tracknum} {title} {artist} {albumartist} {album} {year}";
+
         var sample = new Track
         {
             Title = "vicinity of obscenity",
@@ -248,11 +270,7 @@ public sealed class SettingsPage : Panel
             TrackNumber = "9",
         };
 
-        try
-        {
-            _preview.Text = "{track} {tracknum} {title} {artist} {albumartist} {album} {year}\r\n"
-                          + NameFormatter.BuildFileName(sample, _pattern.Text, ".mp3");
-        }
+        try { _preview.Text = NameFormatter.BuildFileName(sample, _pattern.Text, ".mp3"); }
         catch { _preview.Text = "That pattern is not valid."; }
     }
 

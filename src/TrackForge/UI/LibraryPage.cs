@@ -17,8 +17,6 @@ public sealed class LibraryPage : Panel
     private readonly FlatButton _repair = new();
     private readonly FlatButton _analyze = new();
     private readonly FlatButton _find = new();
-    private readonly FlatButton _edit = new();
-    private readonly FlatButton _reveal = new();
     private readonly List<FlatButton> _chips = new();
     private readonly List<FlatButton> _actions = new();
 
@@ -36,20 +34,23 @@ public sealed class LibraryPage : Panel
         BackColor = Theme.Background;
         Padding = new Padding(Theme.Pad);
 
-        var bar = BuildBar();
+        var bar = BuildToolbar();
         BuildList();
 
+        var spacer = new Panel { Dock = DockStyle.Top, Height = 8, BackColor = Theme.Background };
+
         Controls.Add(_list);
+        Controls.Add(spacer);
         Controls.Add(bar);
     }
 
-    /// <summary>Search, filters, counts and bulk actions in a single 66px strip.</summary>
-    private Control BuildBar()
+    /// <summary>Two rows: search + chips + count + rescan, then status + bulk actions.</summary>
+    private Control BuildToolbar()
     {
-        var bar = new CardPanel { Dock = DockStyle.Top, Height = 66 };
+        var bar = new CardPanel { Dock = DockStyle.Top, Height = 72 };
 
         _search.Location = new Point(Theme.Pad, 8);
-        _search.Size = new Size(230, 24);
+        _search.Size = new Size(210, Theme.FieldHeight);
         _search.PlaceholderText = "Search";
         _search.Inner.TextChanged += (_, _) => ApplyFilter();
 
@@ -59,16 +60,17 @@ public sealed class LibraryPage : Panel
             ("album", "No album"), ("bpm", "No BPM"), ("incomplete", "Incomplete"),
         };
 
-        int x = _search.Right + Theme.Gap * 2;
+        int x = _search.Right + 8;
         foreach (var (key, label) in chipDefs)
         {
             var chip = new FlatButton
             {
                 Text = label,
-                Font = Theme.Small,
-                Size = new Size(TextRenderer.MeasureText(label, Theme.Small).Width + 16, 24),
-                Location = new Point(x, 8),
+                Font = Theme.Secondary,
+                Chip = true,
                 Primary = key == "all",
+                Size = new Size(TextRenderer.MeasureText(label, Theme.Secondary).Width + 18, Theme.FieldHeight),
+                Location = new Point(x, 8),
             };
             chip.Click += (_, _) =>
             {
@@ -78,44 +80,42 @@ public sealed class LibraryPage : Panel
             };
             _chips.Add(chip);
             bar.Controls.Add(chip);
-            x += chip.Width + 4;
+            x += chip.Width + 3;
         }
 
-        _count.Location = new Point(x + 8, 12);
-        _count.Size = new Size(220, 16);
-        _count.Font = Theme.Small;
-        _count.ForeColor = Theme.TextFaint;
-        _count.AutoEllipsis = true;
+        _count.Font = Theme.NumericSmall;
+        _count.ForeColor = Theme.TextCount;
+        _count.AutoSize = false;
+        _count.TextAlign = ContentAlignment.MiddleRight;
+        _count.Size = new Size(230, 16);
+        _count.Anchor = AnchorStyles.Top | AnchorStyles.Right;
 
         _rescan.Text = "Rescan";
-        _rescan.Size = new Size(66, 24);
+        _rescan.Size = new Size(62, Theme.FieldHeight);
         _rescan.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         _rescan.Click += async (_, _) => await RescanAsync();
 
-        _status.Location = new Point(Theme.Pad, 40);
-        _status.Size = new Size(300, 16);
-        _status.Font = Theme.Small;
-        _status.ForeColor = Theme.TextDim;
+        _status.Location = new Point(Theme.Pad, 42);
+        _status.Size = new Size(360, 16);
+        _status.Font = Theme.Secondary;
+        _status.ForeColor = Theme.TextMuted;
         _status.AutoEllipsis = true;
 
         var actionDefs = new (FlatButton b, string text, int w, bool primary, Action click)[]
         {
-            (_fillAll, "Fill every track", 100, true,  RunFillAll),
-            (_enrich,  "Fill selected",     84, false, RunEnrich),
-            (_repair,  "Repair tags",       78, false, RunRepair),
-            (_analyze, "BPM + key",         72, false, RunAnalyze),
-            (_find,    "Find on YouTube",   96, false, RunFind),
-            (_edit,    "Edit",              44, false, OpenEditor),
-            (_reveal,  "Show file",         64, false, RevealSelected),
+            (_fillAll, "Fill every track", 98, true,  RunFillAll),
+            (_enrich,  "Fill selected",    82, false, RunEnrich),
+            (_repair,  "Repair tags",      74, false, RunRepair),
+            (_analyze, "BPM + key",        68, false, RunAnalyze),
+            (_find,    "Find on YouTube",  94, false, RunFind),
         };
 
         foreach (var (b, text, w, primary, click) in actionDefs)
         {
             b.Text = text;
-            b.Font = Theme.Small;
-            b.Size = new Size(w, 24);
+            b.Font = primary ? Theme.Emphasis : Theme.Secondary;
+            b.Size = new Size(w, Theme.FieldHeight);
             b.Primary = primary;
-            // These act on whatever is shown, so they never need a selection.
             b.Enabled = ReferenceEquals(b, _fillAll) || ReferenceEquals(b, _repair);
             b.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             b.Click += (_, _) => click();
@@ -127,14 +127,15 @@ public sealed class LibraryPage : Panel
         bar.Resize += (_, _) =>
         {
             _rescan.Location = new Point(bar.Width - _rescan.Width - Theme.Pad, 8);
+            _count.Location = new Point(_rescan.Left - _count.Width - 8, 12);
+
             int right = bar.Width - Theme.Pad;
             for (int i = _actions.Count - 1; i >= 0; i--)
             {
                 right -= _actions[i].Width;
-                _actions[i].Location = new Point(right, 38);
+                _actions[i].Location = new Point(right, 40);
                 right -= Theme.Gap;
             }
-            _count.Width = Math.Max(60, _rescan.Left - _count.Left - Theme.Gap);
         };
         return bar;
     }
@@ -145,13 +146,31 @@ public sealed class LibraryPage : Panel
 
         var columns = new (string title, int width)[]
         {
-            ("Title", 230), ("Artist", 150), ("Album", 160), ("Year", 46),
-            ("Genre", 90), ("#", 34), ("BPM", 48), ("Key", 58),
-            ("Len", 52), ("Missing", 170),
+            ("Title", 230), ("Artist", 155), ("Album", 175), ("Year", 52),
+            ("Genre", 110), ("#", 38), ("BPM", 52), ("Key", 68),
+            ("Len", 52), ("Missing", 160),
         };
         foreach (var (title, width) in columns) _list.Columns.Add(title, width);
 
-        _list.DrawSubItem += DrawSubItem;
+        // Consolas on every numeric column - this is what lines the table up.
+        foreach (var i in new[] { 3, 5, 6, 7, 8 }) _list.NumericColumns.Add(i);
+        _list.DimColumns.Add(3);
+        _list.DimColumns.Add(8);
+
+        _list.ColourFor = (item, column) =>
+        {
+            var track = item.Tag as Track;
+            return column switch
+            {
+                1 => Theme.TextStrong,
+                2 => string.IsNullOrWhiteSpace(track?.Album) ? Theme.TextFainter : Theme.Text,
+                6 when track is not null && string.IsNullOrWhiteSpace(track.Bpm) && track.DjayBpm.HasValue
+                    => Theme.TextFaint,   // came from djay, not this file's tags
+                9 => item.SubItems[9].Text == "complete" ? Theme.Good : Theme.Warn,
+                _ => null,
+            };
+        };
+
         _list.SelectedIndexChanged += (_, _) => UpdateSelectionState();
         _list.DoubleClick += (_, _) => OpenEditor();
         _list.ColumnClick += (_, e) => SortBy(e.Column);
@@ -166,46 +185,10 @@ public sealed class LibraryPage : Panel
         };
     }
 
-    private void DrawSubItem(object? sender, DrawListViewSubItemEventArgs e)
-    {
-        var track = e.Item?.Tag as Track;
-        bool selected = e.Item?.Selected == true;
-
-        var background = selected ? Theme.Selection
-            : (e.ItemIndex % 2 == 0 ? Theme.Surface : Theme.SurfaceAlt);
-        using (var b = new SolidBrush(background)) e.Graphics.FillRectangle(b, e.Bounds);
-
-        if (selected && e.ColumnIndex == 0)
-            using (var b = new SolidBrush(Theme.Accent))
-                e.Graphics.FillRectangle(b, new Rectangle(e.Bounds.X, e.Bounds.Y, 2, e.Bounds.Height));
-
-        var text = e.SubItem?.Text ?? "";
-        var colour = Theme.Text;
-
-        if (e.ColumnIndex == 9)
-        {
-            colour = text.Length == 0 ? Theme.Good : Theme.Warn;
-            if (text.Length == 0) text = "complete";
-        }
-        else if (e.ColumnIndex is 3 or 5 or 8) colour = Theme.TextDim;
-        else if (e.ColumnIndex is 6 or 7 && track is not null
-                 && string.IsNullOrWhiteSpace(track.Bpm) && track.DjayBpm.HasValue)
-            colour = Theme.TextFaint;   // came from djay, not from this file's tags
-
-        var bounds = new Rectangle(e.Bounds.X + 5, e.Bounds.Y, e.Bounds.Width - 8, e.Bounds.Height);
-        TextRenderer.DrawText(e.Graphics, text, Theme.UI, bounds, colour,
-            TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-    }
-
     // -------------------------------------------------------------- data
 
     public void FocusSearch() => _search.Inner.Focus();
 
-    /// <summary>
-    /// Test hook: churns the list the way real use does - filter, search, re-render,
-    /// change selection, and load artwork - so the leak detector sees the paths that
-    /// actually matter rather than just page visibility.
-    /// </summary>
     internal void StressForTesting()
     {
         foreach (var filter in new[] { "art", "year", "incomplete", "all" })
@@ -223,9 +206,6 @@ public sealed class LibraryPage : Panel
         {
             _list.Items[0].Selected = true;
             if (_list.Items.Count > 1) _list.Items[^1].Selected = true;
-
-            // Artwork is the usual GDI offender: a Bitmap handed to a control and
-            // never disposed leaks until the process runs out of objects.
             var track = _list.Items[0].Tag as Track;
             if (track is not null)
             {
@@ -241,7 +221,7 @@ public sealed class LibraryPage : Panel
         _rescan.Enabled = false;
         _rescan.Text = "...";
         _status.Text = "Scanning " + _forge.Config.LibraryFolder;
-        _status.ForeColor = Theme.TextDim;
+        _status.ForeColor = Theme.TextMuted;
 
         try
         {
@@ -298,6 +278,8 @@ public sealed class LibraryPage : Panel
         Render();
     }
 
+    private static string OrDash(string? s) => string.IsNullOrWhiteSpace(s) ? "—" : s;
+
     private void Render()
     {
         _list.BeginUpdate();
@@ -308,15 +290,15 @@ public sealed class LibraryPage : Panel
             _list.Items.Add(new ListViewItem(new[]
             {
                 t.Title.Length > 0 ? t.Title : Path.GetFileNameWithoutExtension(t.Path),
-                t.Artist,
-                t.Album,
-                t.Year,
-                t.Genre,
-                (t.TrackNumber ?? "").Split('/')[0],
-                t.DisplayBpm,
-                t.Camelot.Length > 0 ? $"{t.MusicalKey} {t.Camelot}" : t.MusicalKey,
-                t.DurationText,
-                t.MissingText,
+                OrDash(t.Artist),
+                OrDash(t.Album),
+                OrDash(t.Year),
+                OrDash(t.Genre),
+                PadTrack(t.TrackNumber),
+                OrDash(t.DisplayBpm),
+                t.Camelot.Length > 0 ? $"{t.MusicalKey} {t.Camelot}" : OrDash(t.MusicalKey),
+                OrDash(t.DurationText),
+                t.IsComplete ? "complete" : t.MissingText,
             })
             { Tag = t });
         }
@@ -328,6 +310,13 @@ public sealed class LibraryPage : Panel
         UpdateSelectionState();
     }
 
+    /// <summary>Zero-padded so the column reads as a column, not ragged text.</summary>
+    private static string PadTrack(string? raw)
+    {
+        var first = (raw ?? "").Split('/')[0].Trim();
+        return int.TryParse(first, out var n) && n > 0 ? n.ToString("00") : "—";
+    }
+
     private void SortBy(int column)
     {
         var keys = new[] { "title", "artist", "album", "year", "genre", "track", "bpm", "key", "length", "missing" };
@@ -335,6 +324,8 @@ public sealed class LibraryPage : Panel
 
         _sortAscending = keys[column] != _sortColumn || !_sortAscending;
         _sortColumn = keys[column];
+        _list.SortColumn = column;
+        _list.SortAscending = _sortAscending;
         SortShown();
         Render();
     }
@@ -345,7 +336,7 @@ public sealed class LibraryPage : Panel
         {
             "artist" => t => t.Artist ?? "",
             "album" => t => t.Album ?? "",
-            "year" => t => t.Year ?? "",
+            "year" => t => int.TryParse(t.Year, out var y) ? y : 0,
             "genre" => t => t.Genre ?? "",
             "track" => t => int.TryParse((t.TrackNumber ?? "").Split('/')[0], out var n) ? n : 0,
             "bpm" => t => double.TryParse(t.DisplayBpm, out var b) ? b : 0,
@@ -373,31 +364,31 @@ public sealed class LibraryPage : Panel
     private void UpdateSelectionState()
     {
         int n = _list.SelectedItems.Count;
-        foreach (var b in new[] { _enrich, _analyze, _find, _reveal }) { b.Enabled = n > 0; b.Invalidate(); }
-        _edit.Enabled = n == 1;
-        _edit.Invalidate();
+        foreach (var b in new[] { _enrich, _analyze, _find }) { b.Enabled = n > 0; b.Invalidate(); }
+
+        _enrich.Text = n > 0 ? $"Fill {n} selected" : "Fill selected";
+        _enrich.Invalidate();
 
         _fillAll.Enabled = _shown.Count > 0;
-        _fillAll.Text = _shown.Count == _all.Count
-            ? "Fill every track"
-            : $"Fill all {_shown.Count} shown";
+        _fillAll.Text = _shown.Count == _all.Count ? "Fill every track" : $"Fill all {_shown.Count} shown";
         _fillAll.Invalidate();
 
         _repair.Enabled = _shown.Count > 0 || n > 0;
         _repair.Text = n > 0 ? $"Repair {n}" : "Repair tags";
         _repair.Invalidate();
 
-        if (n > 0) _status.Text = $"{n} selected";
+        if (n == 1)
+        {
+            var t = Selected().FirstOrDefault();
+            _status.Text = $"1 selected · {t?.Title}";
+        }
+        else if (n > 1) _status.Text = $"{n} selected";
     }
 
     // ------------------------------------------------------------ actions
 
     private void RunEnrich() => Enrich(Selected());
 
-    /// <summary>
-    /// Fills every track currently shown, so the common case - pick "Incomplete",
-    /// fix the lot - doesn't need a select-all first.
-    /// </summary>
     private void RunFillAll()
     {
         if (_shown.Count == 0)
@@ -418,13 +409,9 @@ public sealed class LibraryPage : Panel
 
         _forge.EnqueueEnrich(tracks, dialog.Options);
         _status.Text = $"Filling tags on {tracks.Count} - see Jobs";
-        _status.ForeColor = Theme.TextDim;
+        _status.ForeColor = Theme.TextMuted;
     }
 
-    /// <summary>
-    /// Rewrites tags in the format Windows reads. Acts on selection if there is one,
-    /// otherwise everything shown, so the common case is a single click.
-    /// </summary>
     private void RunRepair()
     {
         var tracks = Selected();
@@ -441,14 +428,13 @@ public sealed class LibraryPage : Panel
             "This fixes genres showing as numbers and cover art showing black in " +
             "Windows. Nothing is downloaded and no values change - only the tag " +
             "format is rewritten.\n\n" +
-            "Files open in another player (djay, VirtualDJ, Windows Media Player) " +
-            "will be skipped and reported.",
+            "Files open in another player will be skipped and reported.",
             "Repair tags", MessageBoxButtons.OKCancel, MessageBoxIcon.Information);
         if (answer != DialogResult.OK) return;
 
         _forge.EnqueueRetag(tracks);
         _status.Text = $"Repairing {tracks.Count} - see Jobs";
-        _status.ForeColor = Theme.TextDim;
+        _status.ForeColor = Theme.TextMuted;
     }
 
     private void RunAnalyze()
@@ -457,7 +443,7 @@ public sealed class LibraryPage : Panel
         if (tracks.Count == 0) return;
         _forge.EnqueueAnalyze(tracks);
         _status.Text = $"Analysing {tracks.Count} - see Jobs";
-        _status.ForeColor = Theme.TextDim;
+        _status.ForeColor = Theme.TextMuted;
     }
 
     private void RunFind()
@@ -473,22 +459,5 @@ public sealed class LibraryPage : Panel
 
         using var editor = new TagEditorDialog(_forge, tracks[0]);
         if (editor.ShowDialog(this) == DialogResult.OK) ApplyFilter();
-    }
-
-    private void RevealSelected()
-    {
-        var track = Selected().FirstOrDefault();
-        if (track is null || !File.Exists(track.Path)) return;
-
-        try
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "explorer.exe",
-                Arguments = $"/select,\"{track.Path}\"",
-                UseShellExecute = true,
-            });
-        }
-        catch { }
     }
 }

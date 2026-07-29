@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using TrackForge.Core;
 
 namespace TrackForge.UI;
@@ -10,6 +11,7 @@ public sealed class MainForm : Form
     private readonly Panel _pageHost = new();
     private readonly JobsPanel _jobs;
     private readonly Label _toolStatus = new();
+    private readonly Panel _toolDot = new();
     private readonly FlatButton _jobsButton = new();
 
     private readonly List<(NavButton button, Control page)> _pages = new();
@@ -22,12 +24,12 @@ public sealed class MainForm : Form
     public MainForm()
     {
         Text = "TrackForge";
-        MinimumSize = new Size(900, 560);
-        Size = new Size(1120, 700);
+        MinimumSize = new Size(940, 580);
+        Size = new Size(1180, 760);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Theme.Background;
         ForeColor = Theme.Text;
-        Font = Theme.UI;
+        Font = Theme.Body;
         DoubleBuffered = true;
         KeyPreview = true;
 
@@ -54,37 +56,78 @@ public sealed class MainForm : Form
         KeyDown += OnKeyDown;
     }
 
-    // ------------------------------------------------------------ chrome
+    // ------------------------------------------------------- native chrome
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+
+    private const int DwmwaUseImmersiveDarkMode = 20;
+    private const int DwmwaBorderColor = 34;
+    private const int DwmwaCaptionColor = 35;
+    private const int DwmwaTextColor = 36;
+
+    /// <summary>
+    /// Recolours the real title bar rather than drawing a fake one. Going borderless
+    /// would mean re-implementing snap layouts, resize edges, double-click-to-maximise
+    /// and the system menu, none of which is worth it.
+    /// </summary>
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+
+        Set(DwmwaUseImmersiveDarkMode, 1);                    // Win10 1809+
+        Set(DwmwaCaptionColor, ToColorRef(Theme.Background)); // Win11 22000+ below here
+        Set(DwmwaTextColor, ToColorRef(Theme.Text));
+        Set(DwmwaBorderColor, ToColorRef(Theme.ChromeBorder));
+
+        void Set(int attribute, int value)
+        {
+            try { DwmSetWindowAttribute(Handle, attribute, ref value, sizeof(int)); }
+            catch { /* older Windows: the dark-mode attribute alone still applies */ }
+        }
+    }
+
+    /// <summary>COLORREF is 0x00BBGGRR, the reverse of the usual hex order.</summary>
+    private static int ToColorRef(Color c) => c.R | (c.G << 8) | (c.B << 16);
+
+    // ------------------------------------------------------------ top bar
 
     private void BuildTopBar()
     {
         _topBar.Dock = DockStyle.Top;
         _topBar.Height = Theme.TopBarHeight;
-        _topBar.BackColor = Theme.Background;
+        _topBar.BackColor = Theme.ChromePanel;
         _topBar.Paint += (_, e) =>
         {
-            using var border = new Pen(Theme.Border);
+            using var border = new Pen(Theme.ChromeBorder);
             e.Graphics.DrawLine(border, 0, _topBar.Height - 1, _topBar.Width, _topBar.Height - 1);
-            using var accent = new SolidBrush(Theme.Accent);
-            e.Graphics.FillRectangle(accent, Theme.Pad, 13, 3, 14);
-            TextRenderer.DrawText(e.Graphics, "TrackForge", Theme.UIBold,
-                new Rectangle(Theme.Pad + 9, 0, 110, _topBar.Height), Theme.Text,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+        };
+
+        _toolDot.Size = new Size(6, 6);
+        _toolDot.BackColor = Theme.TextFaint;
+        _toolDot.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        _toolDot.Paint += (_, e) =>
+        {
+            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using var b = new SolidBrush(_toolDot.BackColor);
+            e.Graphics.FillEllipse(b, 0, 0, 6, 6);
         };
 
         _toolStatus.AutoSize = false;
         _toolStatus.Size = new Size(150, 16);
-        _toolStatus.Font = Theme.Small;
-        _toolStatus.ForeColor = Theme.TextFaint;
-        _toolStatus.TextAlign = ContentAlignment.MiddleRight;
+        _toolStatus.Font = Theme.Secondary;
+        _toolStatus.ForeColor = Theme.TextDim;
+        _toolStatus.TextAlign = ContentAlignment.MiddleLeft;
         _toolStatus.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         _toolStatus.Text = "checking";
+        _toolStatus.BackColor = Color.Transparent;
 
         _jobsButton.Text = "Jobs";
-        _jobsButton.Size = new Size(66, 24);
+        _jobsButton.Size = new Size(64, Theme.ButtonHeight);
         _jobsButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         _jobsButton.Click += (_, _) => _jobs.Toggle();
 
+        _topBar.Controls.Add(_toolDot);
         _topBar.Controls.Add(_toolStatus);
         _topBar.Controls.Add(_jobsButton);
         _topBar.Resize += (_, _) => LayoutTopBar();
@@ -92,8 +135,13 @@ public sealed class MainForm : Form
 
     private void LayoutTopBar()
     {
-        _jobsButton.Location = new Point(_topBar.Width - _jobsButton.Width - Theme.Pad, 8);
-        _toolStatus.Location = new Point(_jobsButton.Left - _toolStatus.Width - Theme.Gap, 12);
+        int y = (Theme.TopBarHeight - Theme.ButtonHeight) / 2;
+        _jobsButton.Location = new Point(_topBar.Width - _jobsButton.Width - Theme.Pad, y);
+
+        var width = TextRenderer.MeasureText(_toolStatus.Text, Theme.Secondary).Width + 4;
+        _toolStatus.Width = width;
+        _toolStatus.Location = new Point(_jobsButton.Left - width - 12, (Theme.TopBarHeight - 16) / 2);
+        _toolDot.Location = new Point(_toolStatus.Left - 11, (Theme.TopBarHeight - 6) / 2);
     }
 
     private void BuildPages()
@@ -116,12 +164,12 @@ public sealed class MainForm : Form
 
     private void AddPage(string title, Control page)
     {
-        var width = TextRenderer.MeasureText(title, Theme.UIBold).Width + 26;
+        var width = TextRenderer.MeasureText(title, Theme.Emphasis).Width + 30;
         var nav = new NavButton
         {
             Text = title,
             Size = new Size(width, Theme.TopBarHeight),
-            Location = new Point(112 + _pages.Sum(p => p.button.Width), 0),
+            Location = new Point(Theme.Pad + _pages.Sum(p => p.button.Width), 0),
         };
         int index = _pages.Count;
         nav.Click += (_, _) => Show(index);
@@ -134,20 +182,6 @@ public sealed class MainForm : Form
         _pages.Add((nav, page));
     }
 
-    /// <summary>Test hooks for the handle-leak stress run.</summary>
-    internal void ShowPageForTesting(int index) => Show(index);
-
-    internal void StressLibraryForTesting() => _library.StressForTesting();
-
-    internal GrabPage GrabPageForTesting => _grab;
-
-    /// <summary>Runs the real startup sequence without the first-run tool dialog.</summary>
-    internal Task StartupForTestingAsync()
-    {
-        _settings.LoadFromConfig();
-        return RefreshToolStatusAsync(offerInstall: false);
-    }
-
     private void Show(int index)
     {
         for (int i = 0; i < _pages.Count; i++)
@@ -157,6 +191,16 @@ public sealed class MainForm : Form
             _pages[i].page.Visible = i == index;
         }
         if (_pages[index].page is LibraryPage lib) lib.FocusSearch();
+    }
+
+    internal void ShowPageForTesting(int index) => Show(index);
+    internal void StressLibraryForTesting() => _library.StressForTesting();
+    internal GrabPage GrabPageForTesting => _grab;
+
+    internal Task StartupForTestingAsync()
+    {
+        _settings.LoadFromConfig();
+        return RefreshToolStatusAsync(offerInstall: false);
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
@@ -188,10 +232,6 @@ public sealed class MainForm : Form
         await _library.RescanAsync();
     }
 
-    /// <summary>
-    /// Checks for yt-dlp and ffmpeg. On first run, offers to fetch them rather than
-    /// leaving the user to work out what a PATH is.
-    /// </summary>
     public async Task RefreshToolStatusAsync(bool offerInstall = false)
     {
         var (ytDlp, ffmpeg) = await _forge.Downloader.CheckToolsAsync();
@@ -200,8 +240,11 @@ public sealed class MainForm : Form
         if (ytDlp is not null && ffmpeg is not null)
         {
             _toolStatus.Text = "tools ready";
-            _toolStatus.ForeColor = Theme.Good;
+            _toolStatus.ForeColor = Theme.TextDim;
+            _toolDot.BackColor = Theme.Good;
+            _toolDot.Invalidate();
             _grab.SetToolsReady(true);
+            LayoutTopBar();
             return;
         }
 
@@ -211,6 +254,8 @@ public sealed class MainForm : Form
 
         _toolStatus.Text = "missing " + string.Join(" + ", missing);
         _toolStatus.ForeColor = Theme.Bad;
+        _toolDot.BackColor = Theme.Bad;
+        _toolDot.Invalidate();
         _grab.SetToolsReady(false);
         LayoutTopBar();
 
@@ -233,6 +278,7 @@ public sealed class MainForm : Form
                 _jobsButton.Text = active > 0 ? $"Jobs {active}" : "Jobs";
                 _jobsButton.Primary = active > 0;
                 _jobsButton.Invalidate();
+                LayoutTopBar();
             });
         }
         catch (ObjectDisposedException) { }

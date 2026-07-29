@@ -3,22 +3,23 @@ using TrackForge.Core;
 namespace TrackForge.UI;
 
 /// <summary>
-/// One pending download. Deliberately dense: field placeholders instead of separate
-/// labels, so the whole card fits in half the height a labelled grid would need.
+/// One pending download. Three columns: artwork, the editable tag grid, and the two
+/// actions. Field placeholders stand in for labels so the whole card stays compact.
 /// </summary>
 public sealed class GrabCard : CardPanel
 {
-    private const int CardHeight = 132;
-    private const int ArtSize = 96;
+    private const int CardHeight = 136;
+    private const int ArtColumn = Theme.GrabArtSize;   // 88
+    private const int ActionColumn = 76;
 
     private readonly ForgeService _forge;
     private readonly VideoEntry _entry;
 
-    private readonly PictureBox _art = new();
+    private readonly WaveMark _art = new();
+    private readonly FlatButton _artButton = new();
     private readonly Label _source = new();
     private readonly ComboBox _matches = new();
     private readonly FlatButton _lookup = new();
-    private readonly FlatButton _artButton = new();
     private readonly FlatButton _grab = new();
     private readonly FlatButton _remove = new();
     private readonly Label _status = new();
@@ -58,54 +59,57 @@ public sealed class GrabCard : CardPanel
 
     private void Build()
     {
-        _art.Size = new Size(ArtSize, ArtSize);
+        _art.Size = new Size(ArtColumn, ArtColumn);
         _art.Location = new Point(Theme.Pad, Theme.Pad);
-        _art.SizeMode = PictureBoxSizeMode.Zoom;
-        _art.BackColor = Theme.SurfaceAlt;
         _art.Cursor = Cursors.Hand;
         _art.Click += async (_, _) => await PickArtAsync();
 
-        _artButton.Text = "Art";
-        _artButton.Size = new Size(ArtSize, 20);
-        _artButton.Font = Theme.Small;
-        _artButton.Location = new Point(Theme.Pad, Theme.Pad + ArtSize + 4);
+        _artButton.Text = "Change art";
+        _artButton.Font = Theme.Secondary;
+        _artButton.Size = new Size(ArtColumn, 20);
+        _artButton.Location = new Point(Theme.Pad, Theme.Pad + ArtColumn + 4);
         _artButton.Click += async (_, _) => await PickArtAsync();
 
-        _source.Font = Theme.Small;
-        _source.ForeColor = Theme.TextFaint;
+        _source.Font = Theme.Secondary;
+        _source.ForeColor = Theme.TextFainter;
         _source.AutoEllipsis = true;
         _source.AutoSize = false;
         _source.Height = 14;
-        _source.Text = $"{_entry.RawTitle}   {_entry.Uploader}   {_entry.DurationText}";
+        _source.Text = string.Join("  ·  ", new[] { _entry.RawTitle, _entry.Uploader, _entry.DurationText }
+            .Where(s => !string.IsNullOrWhiteSpace(s)));
 
-        AddField("title", "Title");
-        AddField("artist", "Artist");
-        AddField("album", "Album");
-        AddField("albumartist", "Album artist");
-        AddField("year", "Year");
-        AddField("genre", "Genre");
-        AddField("track", "#");
-        AddField("disc", "Disc");
-        AddField("bpm", "BPM");
-        AddField("key", "Key");
+        foreach (var (key, placeholder, mono) in new (string, string, bool)[]
+        {
+            ("title", "Title", false), ("artist", "Artist", false), ("album", "Album", false),
+            ("albumartist", "Album artist", false), ("genre", "Genre", false),
+            ("year", "Year", true), ("track", "#", true), ("disc", "Disc", true),
+            ("bpm", "BPM", true), ("key", "Key", true),
+        })
+        {
+            var box = new FlatTextBox(monospace: mono) { Height = Theme.FieldHeight };
+            box.PlaceholderText = placeholder;
+            box.Inner.TextChanged += (_, _) => PullFieldsToMeta();
+            _fields[key] = box;
+            Controls.Add(box);
+        }
 
         _matches.DropDownStyle = ComboBoxStyle.DropDownList;
         _matches.FlatStyle = FlatStyle.Flat;
         _matches.BackColor = Theme.SurfaceAlt;
         _matches.ForeColor = Theme.Text;
-        _matches.Font = Theme.UI;
+        _matches.Font = Theme.Body;
         _matches.Height = 22;
         _matches.Items.Add("No lookup yet");
         _matches.SelectedIndex = 0;
         _matches.SelectedIndexChanged += (_, _) => ApplySelectedMatch();
 
         _lookup.Text = "Look up";
-        _lookup.Size = new Size(66, 22);
-        _lookup.Font = Theme.Small;
+        _lookup.Font = Theme.Secondary;
+        _lookup.Size = new Size(64, 22);
         _lookup.Click += async (_, _) => await LookupAsync();
 
-        _status.Font = Theme.Small;
-        _status.ForeColor = Theme.TextDim;
+        _status.Font = Theme.Secondary;
+        _status.ForeColor = Theme.TextMuted;
         _status.AutoEllipsis = true;
         _status.AutoSize = false;
         _status.Height = 14;
@@ -115,12 +119,12 @@ public sealed class GrabCard : CardPanel
 
         _grab.Text = "Grab";
         _grab.Primary = true;
-        _grab.Size = new Size(72, 24);
+        _grab.Size = new Size(ActionColumn, Theme.PrimaryButtonHeight);
         _grab.Click += (_, _) => Grab();
 
         _remove.Text = "Remove";
-        _remove.Size = new Size(72, 20);
-        _remove.Font = Theme.Small;
+        _remove.Font = Theme.Secondary;
+        _remove.Size = new Size(ActionColumn, 20);
         _remove.Click += (_, _) => RemoveRequested?.Invoke(this);
 
         Controls.AddRange(new Control[]
@@ -130,69 +134,62 @@ public sealed class GrabCard : CardPanel
         Relayout();
     }
 
-    private void AddField(string key, string placeholder)
-    {
-        var box = new FlatTextBox { Height = 24 };
-        box.PlaceholderText = placeholder;
-        box.Inner.TextChanged += (_, _) => PullFieldsToMeta();
-        _fields[key] = box;
-        Controls.Add(box);
-    }
-
     /// <summary>
-    /// Three rows to the right of the artwork. Wide fields share the leftover width
-    /// proportionally so the card looks right at any window size.
+    /// Two proportional field rows to the right of the artwork, matching the spec's
+    /// grid: 2fr/1.35fr/1.35fr, then 1.5fr/1.1fr and fixed numeric columns.
     /// </summary>
     private void Relayout()
     {
-        int left = Theme.Pad + ArtSize + Theme.Gap + 2;
-        int rightColumn = 78;
-        int right = Width - Theme.Pad - rightColumn - Theme.Gap;
-        int available = right - left;
-        if (available < 260) available = 260;
+        int left = Theme.Pad + ArtColumn + 8;
+        int right = Width - Theme.Pad - ActionColumn - 8;
+        int available = Math.Max(320, right - left);
 
-        _source.SetBounds(left, 8, available, 14);
+        _source.SetBounds(left, Theme.Pad, available, 14);
 
-        // Row 1: title | artist | album
-        int y = 26;
-        int unit = available - Theme.Gap * 2;
-        int wTitle = (int)(unit * 0.40), wArtist = (int)(unit * 0.30);
-        int wAlbum = unit - wTitle - wArtist;
-        _fields["title"].SetBounds(left, y, wTitle, 24);
-        _fields["artist"].SetBounds(left + wTitle + Theme.Gap, y, wArtist, 24);
-        _fields["album"].SetBounds(left + wTitle + wArtist + Theme.Gap * 2, y, wAlbum, 24);
+        // Row 1: Title | Artist | Album
+        int y = 30;
+        int span = available - Theme.Gap * 2;
+        int wTitle = (int)(span * 2.0 / 4.7);
+        int wArtist = (int)(span * 1.35 / 4.7);
+        int wAlbum = span - wTitle - wArtist;
+        _fields["title"].SetBounds(left, y, wTitle, Theme.FieldHeight);
+        _fields["artist"].SetBounds(left + wTitle + Theme.Gap, y, wArtist, Theme.FieldHeight);
+        _fields["album"].SetBounds(left + wTitle + wArtist + Theme.Gap * 2, y, wAlbum, Theme.FieldHeight);
 
-        // Row 2: album artist | year | genre | # | disc | bpm | key
-        y = 54;
-        int fixedWidth = 46 + 40 + 34 + 40 + 46;         // year, #, disc, bpm, key
-        int gaps = Theme.Gap * 6;
-        int wAlbumArtist = (int)((available - fixedWidth - gaps) * 0.55);
-        int wGenre = available - fixedWidth - gaps - wAlbumArtist;
-        if (wAlbumArtist < 70) { wAlbumArtist = 70; wGenre = Math.Max(60, available - fixedWidth - gaps - 70); }
+        // Row 2: Album artist | Genre | Year | # | Disc | BPM | Key
+        y = 60;
+        const int wYear = 52, wTrack = 40, wDisc = 40, wBpm = 48, wKey = 54;
+        int fixedWidth = wYear + wTrack + wDisc + wBpm + wKey;
+        int flexible = available - fixedWidth - Theme.Gap * 6;
+        int wAlbumArtist = Math.Max(80, (int)(flexible * 1.5 / 2.6));
+        int wGenre = Math.Max(64, flexible - wAlbumArtist);
 
         int x = left;
-        void Place(string key, int w) { _fields[key].SetBounds(x, y, w, 24); x += w + Theme.Gap; }
+        void Place(string key, int w)
+        {
+            _fields[key].SetBounds(x, y, w, Theme.FieldHeight);
+            x += w + Theme.Gap;
+        }
         Place("albumartist", wAlbumArtist);
         Place("genre", wGenre);
-        Place("year", 46);
-        Place("track", 40);
-        Place("disc", 34);
-        Place("bpm", 40);
-        Place("key", 46);
+        Place("year", wYear);
+        Place("track", wTrack);
+        Place("disc", wDisc);
+        Place("bpm", wBpm);
+        Place("key", wKey);
 
-        // Row 3: match dropdown | look up | status
-        y = 84;
-        int wMatches = Math.Max(150, (int)(available * 0.46));
+        // Match row, then the status line under it.
+        y = 90;
+        int wMatches = Math.Max(180, (int)(available * 0.42));
         _matches.SetBounds(left, y, wMatches, 22);
         _lookup.Location = new Point(left + wMatches + Theme.Gap, y);
-        _status.SetBounds(left, y + 26, available, 14);
+        _status.SetBounds(_lookup.Right + 8, y + 4, Math.Max(80, right - _lookup.Right - 8), 14);
 
         _progress.SetBounds(left, CardHeight - 7, available, 3);
 
-        // Right column: grab over remove
-        int rx = Width - Theme.Pad - rightColumn;
-        _grab.SetBounds(rx, 26, rightColumn, 24);
-        _remove.SetBounds(rx, 54, rightColumn, 20);
+        int rx = Width - Theme.Pad - ActionColumn;
+        _grab.SetBounds(rx, Theme.Pad, ActionColumn, Theme.PrimaryButtonHeight);
+        _remove.SetBounds(rx, Theme.Pad + Theme.PrimaryButtonHeight + 4, ActionColumn, 20);
     }
 
     /// <summary>
@@ -255,7 +252,7 @@ public sealed class GrabCard : CardPanel
     public async Task LookupAsync()
     {
         _lookup.Enabled = false;
-        SetStatus("Looking up...", Theme.TextDim);
+        SetStatus("Looking up...", Theme.TextMuted);
         try
         {
             PullFieldsToMeta();
@@ -274,10 +271,7 @@ public sealed class GrabCard : CardPanel
                 return;
             }
 
-            // The merged result is the default: one press fills every field it can.
-            // The individual sources stay in the list underneath for overriding.
             _merged = MetadataClient.Merge(_candidates);
-
             _matches.Items.Add(_merged is null
                 ? "Best match"
                 : $"Best of all sources ({_merged.SourceLabel})");
@@ -297,12 +291,8 @@ public sealed class GrabCard : CardPanel
     {
         if (_suppressMatchEvent || _matches.SelectedIndex < 0) return;
 
-        // Index 0 is the merged result; the rest map onto _candidates.
         MatchCandidate? chosen;
-        if (_matches.SelectedIndex == 0)
-        {
-            chosen = _merged;
-        }
+        if (_matches.SelectedIndex == 0) chosen = _merged;
         else
         {
             int i = _matches.SelectedIndex - 1;
@@ -312,9 +302,6 @@ public sealed class GrabCard : CardPanel
         if (chosen is null) return;
 
         chosen.ApplyTo(Meta, overwrite: true, _forge.Config.ForceTitleCase);
-
-        // Picking a specific source shouldn't cost you the fields it happens to lack,
-        // so top up anything still blank from the merged result.
         if (_merged is not null && !ReferenceEquals(chosen, _merged))
             _merged.ApplyTo(Meta, overwrite: false, _forge.Config.ForceTitleCase);
 
@@ -345,7 +332,7 @@ public sealed class GrabCard : CardPanel
     {
         PullFieldsToMeta();
         _artButton.Enabled = false;
-        SetStatus("Searching for cover art...", Theme.TextDim);
+        SetStatus("Searching for cover art...", Theme.TextMuted);
         try
         {
             var artist = Meta.AlbumArtist.Length > 0 ? Meta.AlbumArtist : Meta.Artist;
@@ -364,14 +351,13 @@ public sealed class GrabCard : CardPanel
                 SetArt(dialog.SelectedBytes, dialog.SelectedUrl);
                 SetStatus("Cover art set.", Theme.Good);
             }
-            else SetStatus("", Theme.TextDim);
+            else SetStatus("", Theme.TextMuted);
         }
         finally { _artButton.Enabled = true; }
     }
 
     private void SetArt(byte[] bytes, string? url, bool keepAsFallback = false)
     {
-        // Don't let a late video thumbnail overwrite a real cover already chosen.
         if (keepAsFallback && _artUrl is not null) return;
 
         _artBytes = bytes;
@@ -380,6 +366,7 @@ public sealed class GrabCard : CardPanel
         if (image is null) return;
         _art.Image?.Dispose();
         _art.Image = image;
+        _art.Invalidate();
     }
 
     private void SetStatus(string text, Color colour)
@@ -424,13 +411,13 @@ public sealed class GrabCard : CardPanel
                     {
                         JobState.Done => Theme.Good,
                         JobState.Failed => Theme.Bad,
-                        _ => Theme.TextDim
+                        _ => Theme.TextMuted
                     });
 
                     if (changed.State is JobState.Done)
                     {
                         _grab.Text = "Done";
-                        BorderColour = Theme.Good;
+                        BorderColour = Theme.DoneBorder;
                         Invalidate();
                         _forge.Jobs.JobChanged -= OnChanged;
                     }
@@ -453,7 +440,6 @@ public sealed class GrabCard : CardPanel
 
     public bool IsGrabbed => !_grab.Enabled && _grab.Text == "Done";
 
-    /// <summary>Reads the actual text boxes, not Meta - that's where the bug showed.</summary>
     internal Dictionary<string, string> FieldValuesForTesting =>
         _fields.ToDictionary(kv => kv.Key, kv => kv.Value.Text.Trim());
 

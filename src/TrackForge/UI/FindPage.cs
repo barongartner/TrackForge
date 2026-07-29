@@ -10,7 +10,7 @@ public sealed class FindPage : Panel
 {
     private readonly ForgeService _forge;
 
-    private readonly FlatTextBox _queries = new(multiline: true);
+    private readonly FlatTextBox _queries = new(multiline: true, monospace: true);
     private readonly FlatButton _search = new();
     private readonly FlatButton _sendAll = new();
     private readonly FlatButton _clear = new();
@@ -32,23 +32,24 @@ public sealed class FindPage : Panel
         var intake = new CardPanel { Dock = DockStyle.Top, Height = 100 };
 
         _queries.Location = new Point(Theme.Pad, Theme.Pad);
-        _queries.Size = new Size(600, 50);
+        _queries.Size = new Size(600, 48);
         _queries.PlaceholderText = "Artist - Title, one per line. Or send tracks here from Library.";
         _queries.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 
         var buttons = new (FlatButton b, string text, int w, bool primary, Action click)[]
         {
-            (_search,  "Search",       76, true,  () => _ = SearchAsync()),
-            (_sendAll, "Send best",    82, false, SendBest),
-            (_clear,   "Clear",        58, false, () => { _rows.Clear(); Render(); _note.Text = ""; }),
+            (_search,  "Search",    72, true,  () => _ = SearchAsync()),
+            (_sendAll, "Send best", 76, false, SendBest),
+            (_clear,   "Clear",     54, false, () => { _rows.Clear(); Render(); _note.Text = ""; }),
         };
 
         int x = Theme.Pad;
+        int buttonY = Theme.Pad + 48 + Theme.Gap;
         foreach (var (b, text, w, primary, click) in buttons)
         {
             b.Text = text;
-            b.Size = new Size(w, Theme.ButtonHeight);
-            b.Location = new Point(x, 66);
+            b.Size = new Size(w, Theme.PrimaryButtonHeight);
+            b.Location = new Point(x, buttonY);
             b.Primary = primary;
             b.Click += (_, _) => click();
             intake.Controls.Add(b);
@@ -56,10 +57,10 @@ public sealed class FindPage : Panel
         }
         _sendAll.Enabled = false;
 
-        _note.Location = new Point(x + 4, 71);
+        _note.Location = new Point(x + 4, buttonY + 5);
         _note.Size = new Size(400, 16);
         _note.ForeColor = Theme.TextFaint;
-        _note.Font = Theme.Small;
+        _note.Font = Theme.Secondary;
         _note.AutoEllipsis = true;
         _note.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 
@@ -72,13 +73,27 @@ public sealed class FindPage : Panel
         };
 
         _results.Dock = DockStyle.Fill;
-        _results.Columns.Add("Searched for", 200);
-        _results.Columns.Add("YouTube title", 300);
+        _results.Columns.Add("Searched for", 190);
+        _results.Columns.Add("YouTube title", 290);
         _results.Columns.Add("Channel", 150);
-        _results.Columns.Add("Len", 52);
-        _results.Columns.Add("Views", 78);
-        _results.Columns.Add("Link", 230);
-        _results.DrawSubItem += DrawSubItem;
+        _results.Columns.Add("Len", 56);
+        _results.Columns.Add("Views", 84);
+        _results.Columns.Add("Link", 210);
+
+        foreach (var i in new[] { 3, 4, 5 }) _results.NumericColumns.Add(i);
+        _results.IsAccented = item => item.Tag is Row { Best: true };
+        _results.ColourFor = (item, column) =>
+        {
+            var best = item.Tag is Row { Best: true };
+            return column switch
+            {
+                0 => Theme.Text,
+                5 => Theme.TextFaint,
+                2 or 3 or 4 => Theme.TextDim,
+                _ => best ? Theme.Text : Theme.TextDim,
+            };
+        };
+
         _results.DoubleClick += (_, _) => SendSelected();
 
         var menu = new ContextMenuStrip { BackColor = Theme.SurfaceAlt, ForeColor = Theme.Text };
@@ -87,7 +102,10 @@ public sealed class FindPage : Panel
         menu.Items.Add("Open in browser", null, (_, _) => OpenSelected());
         _results.ContextMenuStrip = menu;
 
+        var spacer = new Panel { Dock = DockStyle.Top, Height = 8, BackColor = Theme.Background };
+
         Controls.Add(_results);
+        Controls.Add(spacer);
         Controls.Add(intake);
     }
 
@@ -121,7 +139,7 @@ public sealed class FindPage : Panel
         for (int i = 0; i < queries.Count; i++)
         {
             _note.Text = $"{i + 1}/{queries.Count}  {queries[i]}";
-            _note.ForeColor = Theme.TextDim;
+            _note.ForeColor = Theme.TextMuted;
 
             var hits = await _forge.Downloader.SearchAsync(queries[i], limit: 3);
             for (int h = 0; h < hits.Count; h++) _rows.Add(new Row(queries[i], hits[h], h == 0));
@@ -158,32 +176,6 @@ public sealed class FindPage : Panel
         }
 
         _results.EndUpdate();
-    }
-
-    private void DrawSubItem(object? sender, DrawListViewSubItemEventArgs e)
-    {
-        var row = e.Item?.Tag as Row;
-        bool selected = e.Item?.Selected == true;
-
-        var background = selected ? Theme.Selection
-            : (row?.Best == true ? Theme.Surface : Theme.SurfaceAlt);
-        using (var b = new SolidBrush(background)) e.Graphics.FillRectangle(b, e.Bounds);
-
-        if (row?.Best == true && e.ColumnIndex == 0)
-            using (var b = new SolidBrush(Theme.Accent))
-                e.Graphics.FillRectangle(b, new Rectangle(e.Bounds.X, e.Bounds.Y, 2, e.Bounds.Height));
-
-        var colour = e.ColumnIndex switch
-        {
-            0 => Theme.Text,
-            5 => Theme.TextFaint,
-            2 or 3 or 4 => Theme.TextDim,
-            _ => row?.Best == true ? Theme.Text : Theme.TextDim,
-        };
-
-        var bounds = new Rectangle(e.Bounds.X + 5, e.Bounds.Y, e.Bounds.Width - 8, e.Bounds.Height);
-        TextRenderer.DrawText(e.Graphics, e.SubItem?.Text ?? "", Theme.UI, bounds, colour,
-            TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
     }
 
     private List<Row> SelectedRows() =>

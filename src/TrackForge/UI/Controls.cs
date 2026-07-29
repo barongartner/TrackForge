@@ -4,13 +4,15 @@ using System.Runtime.InteropServices;
 
 namespace TrackForge.UI;
 
-/// <summary>Flat button. Primary = filled accent, otherwise outlined.</summary>
+/// <summary>Flat, square button. Primary = filled accent, otherwise outlined.</summary>
 public sealed class FlatButton : Button
 {
     private bool _hover;
 
     public bool Primary { get; set; }
     public bool Danger { get; set; }
+    /// <summary>Filter chip: accent fill when active, hairline box when not.</summary>
+    public bool Chip { get; set; }
 
     public FlatButton()
     {
@@ -18,8 +20,8 @@ public sealed class FlatButton : Button
                  | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
         FlatStyle = FlatStyle.Flat;
         FlatAppearance.BorderSize = 0;
-        Font = Theme.UI;
-        Height = 30;
+        Font = Theme.Body;
+        Height = Theme.ButtonHeight;
         Cursor = Cursors.Hand;
         BackColor = Color.Transparent;
     }
@@ -30,11 +32,11 @@ public sealed class FlatButton : Button
     protected override void OnPaint(PaintEventArgs e)
     {
         var g = e.Graphics;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
         g.Clear(Parent?.BackColor ?? Theme.Surface);
 
         var rect = new Rectangle(0, 0, Width - 1, Height - 1);
         Color fill, border, text;
+        var font = Font;
 
         if (!Enabled)
         {
@@ -45,6 +47,13 @@ public sealed class FlatButton : Button
             fill = _hover ? Theme.AccentHover : Theme.Accent;
             border = fill;
             text = Color.White;
+            font = Theme.Emphasis;
+        }
+        else if (Chip)
+        {
+            fill = _hover ? Theme.SurfaceHigh : Theme.SurfaceAlt;
+            border = Theme.Border;
+            text = Theme.TextDim;
         }
         else if (Danger)
         {
@@ -62,13 +71,13 @@ public sealed class FlatButton : Button
         using (var b = new SolidBrush(fill)) g.FillRectangle(b, rect);
         using (var p = new Pen(border)) g.DrawRectangle(p, rect);
 
-        TextRenderer.DrawText(g, Text, Font, rect, text,
+        TextRenderer.DrawText(g, Text, font, rect, text,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
-            TextFormatFlags.EndEllipsis);
+            TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
     }
 }
 
-/// <summary>Top-bar navigation button with an accent underline when active.</summary>
+/// <summary>Page tab. 2px accent underline when active.</summary>
 public sealed class NavButton : Button
 {
     private bool _hover;
@@ -80,7 +89,7 @@ public sealed class NavButton : Button
                  | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
         FlatStyle = FlatStyle.Flat;
         FlatAppearance.BorderSize = 0;
-        Font = Theme.UI;
+        Font = Theme.Body;
         Cursor = Cursors.Hand;
         BackColor = Color.Transparent;
     }
@@ -91,15 +100,15 @@ public sealed class NavButton : Button
     protected override void OnPaint(PaintEventArgs e)
     {
         var g = e.Graphics;
-        g.Clear(Theme.Background);
+        g.Clear(Theme.ChromePanel);
 
         if (_hover && !Active)
-            using (var b = new SolidBrush(Theme.Surface))
+            using (var b = new SolidBrush(Theme.SurfaceAlt))
                 g.FillRectangle(b, ClientRectangle);
 
-        var colour = Active ? Theme.Text : (_hover ? Theme.Text : Theme.TextDim);
-        TextRenderer.DrawText(g, Text, Active ? Theme.UIBold : Theme.UI, ClientRectangle, colour,
-            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+        var colour = Active || _hover ? Theme.Text : Theme.TextDim;
+        TextRenderer.DrawText(g, Text, Active ? Theme.Emphasis : Theme.Body, ClientRectangle, colour,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
 
         if (Active)
             using (var b = new SolidBrush(Theme.Accent))
@@ -107,7 +116,7 @@ public sealed class NavButton : Button
     }
 }
 
-/// <summary>Card-style container with a one-pixel border.</summary>
+/// <summary>Card container with a 1px hairline.</summary>
 public class CardPanel : Panel
 {
     public Color BorderColour { get; set; } = Theme.Border;
@@ -127,23 +136,23 @@ public class CardPanel : Panel
     }
 }
 
-/// <summary>Text box with a placeholder and a flat dark border.</summary>
+/// <summary>Square text box with a placeholder and a focus-accent hairline.</summary>
 public sealed class FlatTextBox : Panel
 {
     public TextBox Inner { get; }
 
-    public FlatTextBox(bool multiline = false)
+    public FlatTextBox(bool multiline = false, bool monospace = false)
     {
         BackColor = Theme.SurfaceAlt;
-        Padding = new Padding(8, multiline ? 6 : 5, 8, multiline ? 6 : 5);
-        Height = multiline ? 90 : 30;
+        Padding = new Padding(7, multiline ? 5 : 4, 7, multiline ? 5 : 4);
+        Height = multiline ? 52 : Theme.FieldHeight;
 
         Inner = new TextBox
         {
             BorderStyle = BorderStyle.None,
             BackColor = Theme.SurfaceAlt,
             ForeColor = Theme.Text,
-            Font = Theme.UI,
+            Font = monospace ? Theme.Numeric : Theme.Body,
             Dock = DockStyle.Fill,
             Multiline = multiline,
             ScrollBars = multiline ? ScrollBars.Vertical : ScrollBars.None,
@@ -180,7 +189,7 @@ public sealed class FlatTextBox : Panel
     }
 }
 
-/// <summary>Thin flat progress bar.</summary>
+/// <summary>Thin square progress bar.</summary>
 public sealed class FlatProgress : Control
 {
     private double _value;
@@ -197,8 +206,8 @@ public sealed class FlatProgress : Control
     {
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer
                  | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
-        Height = 4;
-        BackColor = Theme.SurfaceHigh;
+        Height = 3;
+        BackColor = Theme.ChromeBorder;
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -211,58 +220,77 @@ public sealed class FlatProgress : Control
     }
 }
 
-/// <summary>Small pill-shaped status label.</summary>
-public sealed class Pill : Control
+/// <summary>Five-bar wave mark used as the artwork placeholder and app tile.</summary>
+public sealed class WaveMark : Control
 {
-    public Color PillColour { get; set; } = Theme.TextDim;
+    private static readonly double[] Heights = { 0.30, 0.62, 0.44, 0.80, 0.36 };
+    private const int AccentBar = 3;
 
-    public Pill()
+    public WaveMark()
     {
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer
-                 | ControlStyles.UserPaint | ControlStyles.ResizeRedraw
-                 | ControlStyles.SupportsTransparentBackColor, true);
-        Font = Theme.Small;
-        Height = 20;
-        BackColor = Color.Transparent;
+                 | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+        BackColor = Theme.SurfaceAlt;
     }
+
+    public Image? Image { get; set; }
 
     protected override void OnPaint(PaintEventArgs e)
     {
         var g = e.Graphics;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.Clear(Parent?.BackColor ?? Theme.Background);
+        g.Clear(BackColor);
 
-        var rect = new Rectangle(0, 0, Width - 1, Height - 1);
-        using (var path = Rounded(rect, Height / 2))
+        if (Image is not null)
         {
-            using var b = new SolidBrush(Theme.SurfaceAlt);
-            g.FillPath(b, path);
-            using var p = new Pen(PillColour);
-            g.DrawPath(p, path);
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.DrawImage(Image, new Rectangle(1, 1, Width - 2, Height - 2));
         }
-        TextRenderer.DrawText(g, Text, Font, rect, PillColour,
-            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-    }
+        else
+        {
+            int barWidth = Math.Max(3, Width / 12);
+            int spacing = Math.Max(2, barWidth / 2);
+            int total = Heights.Length * barWidth + (Heights.Length - 1) * spacing;
+            int x = (Width - total) / 2;
+            int baseline = (int)(Height * 0.74);
 
-    public static GraphicsPath Rounded(Rectangle r, int radius)
-    {
-        var path = new GraphicsPath();
-        int d = radius * 2;
-        if (d <= 0) { path.AddRectangle(r); return path; }
-        path.AddArc(r.X, r.Y, d, d, 180, 90);
-        path.AddArc(r.Right - d, r.Y, d, d, 270, 90);
-        path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
-        path.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
-        path.CloseFigure();
-        return path;
+            for (int i = 0; i < Heights.Length; i++)
+            {
+                int h = (int)(Height * 0.48 * Heights[i] / 0.80);
+                var colour = i == AccentBar ? Theme.Accent : Theme.WaveBar;
+                using var b = new SolidBrush(colour);
+                g.FillRectangle(b, x, baseline - h, barWidth, h);
+                x += barWidth + spacing;
+            }
+        }
+
+        using var p = new Pen(Theme.Border);
+        g.DrawRectangle(p, 0, 0, Width - 1, Height - 1);
     }
 }
 
-/// <summary>ListView with a dark owner-drawn header and no flicker.</summary>
+/// <summary>
+/// Table. 24px header, 26px rows, 1px dividers, alternating row fills, a 2px accent
+/// inset on the selected row, and Consolas for numeric columns so they line up.
+/// </summary>
 public class DarkListView : ListView
 {
     [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
     private static extern int SetWindowTheme(IntPtr hWnd, string? app, string? id);
+
+    /// <summary>Column indexes rendered in Consolas.</summary>
+    public HashSet<int> NumericColumns { get; } = new();
+
+    /// <summary>Column indexes shown dimmer than body text.</summary>
+    public HashSet<int> DimColumns { get; } = new();
+
+    public int SortColumn { get; set; } = -1;
+    public bool SortAscending { get; set; } = true;
+
+    /// <summary>Per-row colour override, by column. Return null to use the default.</summary>
+    public Func<ListViewItem, int, Color?>? ColourFor { get; set; }
+
+    /// <summary>Rows that carry the 2px accent inset even when not selected.</summary>
+    public Func<ListViewItem, bool>? IsAccented { get; set; }
 
     public DarkListView()
     {
@@ -273,7 +301,7 @@ public class DarkListView : ListView
         BorderStyle = BorderStyle.None;
         BackColor = Theme.Surface;
         ForeColor = Theme.Text;
-        Font = Theme.UI;
+        Font = Theme.Body;
         OwnerDraw = true;
         MultiSelect = true;
         GridLines = false;
@@ -291,10 +319,51 @@ public class DarkListView : ListView
         using (var p = new Pen(Theme.Border))
             e.Graphics.DrawLine(p, e.Bounds.Left, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
 
-        var text = new Rectangle(e.Bounds.X + 8, e.Bounds.Y, e.Bounds.Width - 12, e.Bounds.Height);
-        TextRenderer.DrawText(e.Graphics, e.Header?.Text ?? "", Theme.Small, text, Theme.TextDim,
-            TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+        bool active = e.ColumnIndex == SortColumn;
+        var colour = active ? Theme.Text : Theme.TextDim;
+        var text = new Rectangle(e.Bounds.X + 7, e.Bounds.Y, e.Bounds.Width - 18, e.Bounds.Height);
+
+        TextRenderer.DrawText(e.Graphics, e.Header?.Text ?? "", Theme.Secondary, text, colour,
+            TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+
+        if (!active) return;
+
+        var arrow = SortAscending ? "▲" : "▼";
+        var arrowRect = new Rectangle(e.Bounds.Right - 14, e.Bounds.Y, 12, e.Bounds.Height);
+        TextRenderer.DrawText(e.Graphics, arrow, Theme.Eyebrow, arrowRect, Theme.Accent,
+            TextFormatFlags.VerticalCenter | TextFormatFlags.Right | TextFormatFlags.NoPrefix);
     }
 
     protected override void OnDrawItem(DrawListViewItemEventArgs e) => e.DrawDefault = false;
+
+    protected override void OnDrawSubItem(DrawListViewSubItemEventArgs e)
+    {
+        var item = e.Item;
+        if (item is null) return;
+
+        bool selected = item.Selected;
+        bool accented = selected || (IsAccented?.Invoke(item) ?? false);
+
+        var background = selected ? Theme.Selection
+            : (e.ItemIndex % 2 == 0 ? Theme.Surface : Theme.RowOdd);
+
+        using (var b = new SolidBrush(background)) e.Graphics.FillRectangle(b, e.Bounds);
+
+        // 1px divider under every row.
+        using (var p = new Pen(Theme.RowDivider))
+            e.Graphics.DrawLine(p, e.Bounds.Left, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
+
+        if (accented && e.ColumnIndex == 0)
+            using (var b = new SolidBrush(Theme.Accent))
+                e.Graphics.FillRectangle(b, new Rectangle(e.Bounds.X, e.Bounds.Y, 2, e.Bounds.Height - 1));
+
+        var text = e.SubItem?.Text ?? "";
+        var colour = ColourFor?.Invoke(item, e.ColumnIndex)
+                     ?? (DimColumns.Contains(e.ColumnIndex) ? Theme.TextDim : Theme.Text);
+        var font = NumericColumns.Contains(e.ColumnIndex) ? Theme.Numeric : Theme.Body;
+
+        var bounds = new Rectangle(e.Bounds.X + 7, e.Bounds.Y, e.Bounds.Width - 11, e.Bounds.Height - 1);
+        TextRenderer.DrawText(e.Graphics, text, font, bounds, colour,
+            TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+    }
 }

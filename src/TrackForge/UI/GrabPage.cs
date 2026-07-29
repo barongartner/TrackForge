@@ -7,7 +7,7 @@ public sealed class GrabPage : Panel
 {
     private readonly ForgeService _forge;
 
-    private readonly FlatTextBox _urlBox = new(multiline: true);
+    private readonly FlatTextBox _urlBox = new(multiline: true, monospace: true);
     private readonly FlatButton _download = new();
     private readonly FlatButton _fetch = new();
     private readonly FlatButton _grabAll = new();
@@ -25,32 +25,31 @@ public sealed class GrabPage : Panel
         BackColor = Theme.Background;
         Padding = new Padding(Theme.Pad);
 
-        var intake = new CardPanel { Dock = DockStyle.Top, Height = 108 };
+        var intake = new CardPanel { Dock = DockStyle.Top, Height = 104 };
 
         _urlBox.Location = new Point(Theme.Pad, Theme.Pad);
-        _urlBox.Size = new Size(600, 58);
+        _urlBox.Size = new Size(600, 52);
         _urlBox.Inner.WordWrap = false;
         _urlBox.Inner.ScrollBars = ScrollBars.Both;
         _urlBox.PlaceholderText = "Paste YouTube links, one per line. Playlists expand.";
         _urlBox.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 
-        // One button does the whole job. Pasting a link and pressing the obvious
-        // button has to actually download the track - anything else reads as broken.
         var buttons = new (FlatButton b, string text, int w, bool primary, Action click)[]
         {
             (_download,  "Download",     86, true,  () => _ = FetchAsync(autoGrab: true)),
-            (_fetch,     "Review first", 88, false, () => _ = FetchAsync(autoGrab: false)),
-            (_lookupAll, "Look up all",  88, false, () => _ = LookupAllAsync()),
-            (_grabAll,   "Grab all",     76, false, GrabAll),
-            (_clear,     "Clear",        58, false, ClearCards),
+            (_fetch,     "Review first", 84, false, () => _ = FetchAsync(autoGrab: false)),
+            (_lookupAll, "Look up all",  80, false, () => _ = LookupAllAsync()),
+            (_grabAll,   "Grab all",     68, false, GrabAll),
+            (_clear,     "Clear",        54, false, ClearCards),
         };
 
         int x = Theme.Pad;
+        int buttonY = Theme.Pad + 52 + Theme.Gap;
         foreach (var (b, text, w, primary, click) in buttons)
         {
             b.Text = text;
-            b.Size = new Size(w, Theme.ButtonHeight);
-            b.Location = new Point(x, 74);
+            b.Size = new Size(w, Theme.PrimaryButtonHeight);
+            b.Location = new Point(x, buttonY);
             b.Primary = primary;
             b.Click += (_, _) => click();
             if (b != _download && b != _fetch) b.Enabled = false;
@@ -58,10 +57,10 @@ public sealed class GrabPage : Panel
             x += w + Theme.Gap;
         }
 
-        _note.Location = new Point(x + 4, 79);
-        _note.Size = new Size(420, 16);
+        _note.Location = new Point(x + 4, buttonY + 5);
+        _note.Size = new Size(400, 16);
         _note.ForeColor = Theme.TextFaint;
-        _note.Font = Theme.Small;
+        _note.Font = Theme.Secondary;
         _note.AutoEllipsis = true;
         _note.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 
@@ -78,7 +77,7 @@ public sealed class GrabPage : Panel
         _cards.WrapContents = false;
         _cards.AutoScroll = true;
         _cards.BackColor = Theme.Background;
-        _cards.Padding = new Padding(0, Theme.Gap, 0, 0);
+        _cards.Padding = new Padding(0, 8, 0, 0);
         _cards.Resize += (_, _) => ResizeCards();
 
         _empty.Text = "Paste a YouTube link above and hit Download.\r\n\r\n" +
@@ -101,17 +100,6 @@ public sealed class GrabPage : Panel
         UpdateButtons();
     }
 
-    // ---- test hooks: drive the exact path a user clicks -------------------
-
-    internal bool ToolsReadyForTesting => _toolsReady;
-    internal string NoteForTesting => _note.Text;
-    internal int CardCountForTesting => _cards.Controls.OfType<GrabCard>().Count();
-    internal IEnumerable<GrabCard> CardsForTesting => _cards.Controls.OfType<GrabCard>();
-
-    internal void SetUrlForTesting(string url) => _urlBox.Text = url;
-
-    internal Task ClickDownloadForTesting() => FetchAsync(autoGrab: true);
-
     public void SetToolsReady(bool ready)
     {
         _toolsReady = ready;
@@ -132,13 +120,15 @@ public sealed class GrabPage : Panel
                        + string.Join(Environment.NewLine, fresh);
     }
 
+    internal bool ToolsReadyForTesting => _toolsReady;
+    internal string NoteForTesting => _note.Text;
+    internal int CardCountForTesting => _cards.Controls.OfType<GrabCard>().Count();
+    internal IEnumerable<GrabCard> CardsForTesting => _cards.Controls.OfType<GrabCard>();
+    internal void SetUrlForTesting(string url) => _urlBox.Text = url;
+    internal Task ClickDownloadForTesting() => FetchAsync(autoGrab: true);
+
     // -------------------------------------------------------------- fetch
 
-    /// <summary>
-    /// Reads each link. With autoGrab it then looks every track up and downloads it
-    /// without further clicks - the path most people want. Without it, cards are left
-    /// for review.
-    /// </summary>
     private async Task FetchAsync(bool autoGrab)
     {
         if (!_toolsReady)
@@ -149,8 +139,6 @@ public sealed class GrabPage : Panel
             return;
         }
 
-        // Dedupe after normalising: several sidebar links can point at the same video
-        // once the radio-mix noise is stripped off.
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var urls = _urlBox.Text
             .Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
@@ -171,7 +159,7 @@ public sealed class GrabPage : Panel
         var active = autoGrab ? _download : _fetch;
         var originalText = active.Text;
         active.Text = "...";
-        _note.ForeColor = Theme.TextDim;
+        _note.ForeColor = Theme.TextMuted;
 
         var fresh = new List<GrabCard>();
         int failed = 0;
@@ -201,7 +189,7 @@ public sealed class GrabPage : Panel
             for (int i = 0; i < fresh.Count; i++)
             {
                 _note.Text = $"Tagging {i + 1} of {fresh.Count}...";
-                _note.ForeColor = Theme.TextDim;
+                _note.ForeColor = Theme.TextMuted;
                 await fresh[i].LookupAsync();
                 fresh[i].Grab();
             }
@@ -210,7 +198,7 @@ public sealed class GrabPage : Panel
         }
         else if (failed == 0)
         {
-            _note.Text = $"{fresh.Count} queued. Look them up, check the tags, then grab.";
+            _note.Text = $"{fresh.Count} looked up. Check the tags, then grab.";
             _note.ForeColor = Theme.TextFaint;
         }
 
