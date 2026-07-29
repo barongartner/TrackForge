@@ -1,14 +1,20 @@
 # TrackForge
 
-A native Windows app for managing a local music library and turning YouTube links
-into properly tagged MP3s — cover art, album, year, genre, track number, BPM and
-musical key all filled in automatically.
+A native app for managing a local music library and turning YouTube links into
+properly tagged MP3s — cover art, album, year, genre, track number, BPM and musical
+key all filled in automatically.
 
 Built because every "YouTube to MP3" tool either dumps an untagged file called
 `video.mp3` into your downloads folder, or wants a subscription.
 
+Windows and macOS, each written natively for its platform — WinForms on .NET 8,
+SwiftUI on macOS. No Electron, no shared UI layer, no cross-platform framework
+tax. A library maintained from either machine looks identical.
+
 ![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4)
+![Swift](https://img.shields.io/badge/Swift-SwiftUI-F05138)
 ![Windows](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)
+![macOS](https://img.shields.io/badge/platform-macOS%2013%2B-000000)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -46,21 +52,40 @@ behaviours you want.
 
 ## Install
 
-Download **`TrackForge-1.0.0-x64.msi`** from the
-[latest release](https://github.com/barongartner/TrackForge/releases/latest) and run it.
+Grab the build for your machine from the
+[latest release](https://github.com/barongartner/TrackForge/releases/latest).
 
-That's the whole thing. The installer needs nothing on your machine first:
+### Windows
+
+Download **`TrackForge-1.1.0-x64.msi`** and run it. That's the whole thing — the
+installer needs nothing on your machine first, and the only requirement is
+Windows 10 or 11, 64-bit.
 
 - **No .NET install.** The app ships self-contained.
-- **No yt-dlp or ffmpeg install.** TrackForge downloads them itself on first run —
-  about 40 MB, into `%LOCALAPPDATA%\TrackForge\tools`, no admin rights needed. You get
-  a small dialog with a progress bar the first time you open it. **Settings → Install /
-  update tools** re-runs it any time, which is also how you keep yt-dlp current.
 
-The only requirement is Windows 10 or 11, 64-bit.
+### macOS
 
-If you'd rather manage the tools yourself, TrackForge uses whatever is on your `PATH`
-when its own copies aren't present, and `config.json` can point at specific executables.
+Download **`TrackForge-1.1.0.dmg`**, open it, and drag TrackForge to Applications.
+Requires macOS 13 or later; the app is a universal build for Intel and Apple
+silicon.
+
+The first time you open it, macOS will say it can't check the app for malicious
+software. **Right-click TrackForge → Open → Open** and it will launch, and keep
+launching normally afterwards. That prompt is Gatekeeper noticing the app isn't
+notarised, which needs a paid Apple Developer membership this project doesn't have.
+
+### Both
+
+**No yt-dlp or ffmpeg install.** TrackForge downloads them itself on first run —
+about 40 MB on Windows, 115 MB on macOS — into its own folder, with no admin
+rights needed. You get a small dialog with a progress bar the first time you open
+it. **Settings → Install / update tools** re-runs it any time, which is also how
+you keep yt-dlp current.
+
+If you'd rather manage the tools yourself, TrackForge uses whatever is on your
+`PATH` when its own copies aren't present, and `config.json` can point at specific
+executables. On macOS it also looks in `/opt/homebrew/bin` and `/usr/local/bin`,
+because an app launched from Finder doesn't inherit your shell's `PATH`.
 
 ### Build from source
 
@@ -289,9 +314,17 @@ installer/
   TrackForge.wxs     WiX 5 package definition
   build.ps1          Publish self-contained, then build the MSI
   License.rtf        Shown on the installer's licence page
+
+macOS/
+  Sources/           The SwiftUI app - same pages, same rules, native code
+  Tests/             Self-test harness over tagging, naming and matching
+  build.sh           Compile TrackForge.app, universal
+  package.sh         Build the release dmg
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit together.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the Windows pieces fit
+together, and [macOS/README.md](macOS/README.md) for what the Mac build does
+differently — hand-rolled ID3, Accelerate for the FFT, and its own tool bootstrap.
 
 ---
 
@@ -307,6 +340,11 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit together
 - **yt-dlp breaks when YouTube changes things.** When downloads start failing, hit
   **Settings → Install / update tools** to pull the current build.
 - **The MSI is unsigned.** SmartScreen will warn on first run — More info → Run anyway.
+- **The Mac app isn't notarised.** Gatekeeper will warn on first run — right-click →
+  Open → Open. Both of these need paid certificates; this is a free project.
+- **Writing tags to non-MP3 files on macOS goes through ffmpeg.** MP3 is handled
+  natively; FLAC, M4A and the rest are remuxed, which is fast but needs ffmpeg
+  present. Reading works either way.
 
 ---
 

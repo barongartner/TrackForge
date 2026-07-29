@@ -1,5 +1,9 @@
 # Architecture
 
+This document describes the Windows build. The macOS build is a separate native
+rewrite that mirrors the same pipelines and rules — see
+[macOS/README.md](../macOS/README.md) for what it does differently and why.
+
 TrackForge is a WinForms app on .NET 8, split into a `Core` layer that knows nothing
 about the UI and a `UI` layer that does all the drawing.
 
